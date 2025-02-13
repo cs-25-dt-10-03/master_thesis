@@ -19,6 +19,9 @@ class ElectricVehicle:
         self.charging_efficiency = charging_efficiency
         self.current_soc = initial_soc if initial_soc is not None else soc_min
 
+
+
+
     def create_flex_offer(self,
                           charging_window_start: datetime,
                           charging_window_end: datetime,
