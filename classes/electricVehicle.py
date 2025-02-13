@@ -51,7 +51,7 @@ class ElectricVehicle:
         )
         return flex_offer
     
-    def create_dfo(self, numsamples, duration) -> DFO:
+    def create_dfo(self, charging_window_start: datetime, charging_window_end: datetime, duration, numsamples) -> DFO:
 
         time_slot_resolution = timedelta(minutes = config.TIME_RESOLUTION)     
 
@@ -68,8 +68,8 @@ class ElectricVehicle:
         max_prev = []
 
         for i in range(num_slots):
-            min_prev[i] = min((additional_min / self.charging_power) * (i + 1), additional_min)
-            max_prev[i] = min((additional_max / self.charging_power) * (i + 1), additional_max)
+            min_prev.append(min((additional_min / self.charging_power) * i, additional_min))
+            max_prev.append(min((additional_max / self.charging_power) * i, additional_max))
 
         dfo = DFO(self.vehicle_id, min_prev, max_prev, numsamples)
         dfo.generate_dependency_polygons()
