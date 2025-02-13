@@ -1,3 +1,6 @@
+import matplotlib.pyplot as plt
+from scipy.spatial import ConvexHull
+import numpy as np
 from typing import List, Optional
 
 class Point:
@@ -95,3 +98,43 @@ class DFO:
             f"Polygon {i}:\n{polygon}" for i, polygon in enumerate(self.polygons)
         )
         return f"DFO ID: {self.dfo_id}\n{polygons_str}"
+    
+    def plot_dfo(self):
+        """Visualizes each dependency polygon in its own coordinate system."""
+        num_polygons = len(self.polygons)
+        fig, axes = plt.subplots(1, num_polygons, figsize=(num_polygons * 5, 5), constrained_layout=True)
+
+        if num_polygons == 1:
+            axes = [axes]  # Ensure axes is iterable when there's only one polygon
+
+        colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k']  # Cycle through colors
+
+        for i, (polygon, ax) in enumerate(zip(self.polygons, axes)):
+            x_vals = np.array([point.x for point in polygon.points])
+            y_vals = np.array([point.y for point in polygon.points])
+
+            color = colors[i % len(colors)]  # Cycle colors if there are many polygons
+
+            if len(polygon.points) == 2:  # If only two points, draw a single line
+                ax.plot(x_vals, y_vals, linestyle='-', marker='o', color=color, alpha=0.6)
+            elif len(polygon.points) >= 3:  # Convex Hull requires at least 3 points
+                points_array = np.column_stack((x_vals, y_vals))
+                hull = ConvexHull(points_array)
+                hull_vertices = hull.vertices
+
+                # Close the polygon by appending the first point at the end
+                hull_vertices = np.append(hull_vertices, hull_vertices[0])
+
+                ax.plot(x_vals[hull_vertices], y_vals[hull_vertices], linestyle='-', marker='o', color=color, alpha=0.6)
+                ax.fill(x_vals[hull_vertices], y_vals[hull_vertices], color=color, alpha=0.2)  # Light fill
+
+            ax.scatter(x_vals, y_vals, color=color, s=40, label=f"Polygon {i}")
+
+            ax.set_xlabel("Previous Energy")
+            ax.set_ylabel("Current Energy")
+            ax.set_title(f"Polygon {i}")
+            ax.legend()
+            ax.grid(True)
+
+        fig.suptitle(f"DFO ID: {self.dfo_id} - Dependency Polygons", fontsize=14)
+        plt.show()

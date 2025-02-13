@@ -2,3 +2,5 @@ pandas
 openpyxl
 datetime
 pulp
+scipy
+np
