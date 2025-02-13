@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 class Point:
     def __init__(self, x: float, y: float):
@@ -59,18 +59,31 @@ class DependencyPolygon:
         return f"Polygon:\n{points_str}"
 
 class DFO:
-    def __init__(self, dfo_id: int, min_prev: List[float], max_prev: List[float], numsamples: int):
+    def __init__(
+        self, 
+        dfo_id: int, 
+        min_prev: List[float], 
+        max_prev: List[float], 
+        numsamples: int = 5,
+        min_total_energy: Optional[float] = None, 
+        max_total_energy: Optional[float] = None
+    ):
         self.dfo_id = dfo_id
         self.polygons: List[DependencyPolygon] = [
             DependencyPolygon(min_p, max_p, numsamples) for min_p, max_p in zip(min_prev, max_prev)
         ]
 
+        if min_total_energy is None:
+            self.min_total_energy = min_prev[-1] # Last element of min_prev
+        if max_total_energy is None:
+            self.max_total_energy = max_prev[-1] # Last element of max_prev
+
     def generate_dependency_polygons(self):
         for i in range(len(self.polygons)):
-            if i < len(self.polygons) - 1:
+            if i < len(self.polygons) - 1: # Generate allowed energy usage based on min/max dependency from the next timestep
                 self.polygons[i].generate_polygon(i, self.polygons[i + 1].min_prev_energy, self.polygons[i + 1].max_prev_energy)
-            else:
-                self.polygons[i].generate_polygon(i, 0, 0)  # Last timestep
+            else: 
+                self.polygons[i].generate_polygon(i, self.min_total_energy, self.max_total_energy)  # Last timestep, so generate allowed energy usage based on total min/max energy
 
     def print_dfo(self):
         print(f"DFO ID: {self.dfo_id}")
