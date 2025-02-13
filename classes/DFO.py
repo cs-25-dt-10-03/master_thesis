@@ -6,7 +6,7 @@ class Point:
         self.y = y  # Energy usage in the current timestep; either min or max
 
     def __repr__(self):
-        return f"Point(x={self.x}, y={self.y})"
+        return f"({self.x:.3g}, {self.y:.3g})"  # Three significant digits
 
 class DependencyPolygon:
     def __init__(self, min_prev: float, max_prev: float, numsamples: int):
