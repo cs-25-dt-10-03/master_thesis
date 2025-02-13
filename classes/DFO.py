@@ -54,6 +54,10 @@ class DependencyPolygon:
         for point in self.points:
             print(point)
 
+    def __repr__(self): #so print(polygon) can be used directly
+        points_str = "\n".join(map(str, self.points))
+        return f"Polygon:\n{points_str}"
+
 class DFO:
     def __init__(self, dfo_id: int, min_prev: List[float], max_prev: List[float], numsamples: int):
         self.dfo_id = dfo_id
@@ -72,3 +76,9 @@ class DFO:
         print(f"DFO ID: {self.dfo_id}")
         for i, polygon in enumerate(self.polygons):
             polygon.print_polygon(i)
+    
+    def __repr__(self): # so print(dfo) can be used directly
+        polygons_str = "\n".join(
+            f"Polygon {i}:\n{polygon}" for i, polygon in enumerate(self.polygons)
+        )
+        return f"DFO ID: {self.dfo_id}\n{polygons_str}"
