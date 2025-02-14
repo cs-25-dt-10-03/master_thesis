@@ -25,7 +25,8 @@ class ElectricVehicle:
     def create_flex_offer(self,
                           charging_window_start: datetime,
                           charging_window_end: datetime,
-                          duration: timedelta) -> flexOffer:
+                          duration: timedelta,
+                          tec_fo: bool = False) -> flexOffer:
 
         time_slot_resolution = timedelta(minutes = config.TIME_RESOLUTION)
 
@@ -36,18 +37,25 @@ class ElectricVehicle:
 
         energy_profile = [energy_per_slot * self.charging_efficiency for _ in range(num_slots)]
         
-        min_energy = self.soc_min * self.capacity
-        max_energy = self.soc_max * self.capacity
+        if tec_fo:
+            min_energy = self.soc_min * self.capacity
+            max_energy = self.soc_max * self.capacity
+            total_energy_limit = self.capacity
+        else:
+            min_energy = None
+            max_energy = None
+            total_energy_limit = None
+
         
         flex_offer = flexOffer(
             offer_id=self.vehicle_id,
             earliest_start=charging_window_start,
             latest_start=latest_start,
-            duration=duration ,
+            duration=duration,
             energy_profile=energy_profile,
             min_energy=min_energy,
             max_energy=max_energy,
-            total_energy_limit=self.capacity
+            total_energy_limit=total_energy_limit
         )
         return flex_offer
     
@@ -63,7 +71,6 @@ class ElectricVehicle:
 
         additional_min = max(target_min_energy - initial_energy, 0)
         additional_max = max(target_max_energy - initial_energy, 0)
-
         min_prev = []
         max_prev = []
 
