@@ -75,10 +75,10 @@ class ElectricVehicle:
         max_prev = []
 
         for i in range(num_slots):
-            min_prev.append(min((additional_min / self.charging_power) * i, additional_min))
-            max_prev.append(min((additional_max / self.charging_power) * i, additional_max))
-
-        dfo = DFO(self.vehicle_id, min_prev, max_prev, numsamples)
+            min_prev.append(max(additional_min - self.charging_power * i, 0))
+            max_prev.append(min(self.charging_power * i, additional_max))
+        min_prev.reverse()
+        dfo = DFO(self.vehicle_id, min_prev, max_prev, numsamples, self.charging_power, additional_min, additional_max)
         dfo.generate_dependency_polygons()
         return dfo
 
