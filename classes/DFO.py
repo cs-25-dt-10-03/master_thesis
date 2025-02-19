@@ -89,9 +89,8 @@ class DFO:
         for i in range(len(self.polygons)):
             if i < len(self.polygons) - 1: # Generate allowed energy usage based on min/max dependency from the next timestep
                 self.polygons[i].generate_polygon(self.charging_power, self.polygons[i + 1].min_prev_energy, self.polygons[i + 1].max_prev_energy)
-            else:
-                self.polygons[i].generate_polygon(self.charging_power, self.min_total_energy, self.max_total_energy)  # Last timestep, so generate allowed energy usage based on total min/max energy
-
+        self.polygons = self.polygons[:-1]  # Remove the last polygon, as it was only there such that the loop could generate the second-to-last polygon
+    
     def print_dfo(self):
         print(f"DFO ID: {self.dfo_id}")
         for i, polygon in enumerate(self.polygons):
