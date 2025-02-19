@@ -33,9 +33,10 @@ class ElectricVehicle:
         latest_start = charging_window_end - duration
 
         num_slots = int(duration / time_slot_resolution)
-        energy_per_slot = self.charging_power * (time_slot_resolution.total_seconds() / 3600)
+        max_energy_per_slot = self.charging_power * (time_slot_resolution.total_seconds() / 3600) * self.charging_efficiency
 
-        energy_profile = [energy_per_slot * self.charging_efficiency for _ in range(num_slots)]
+        # Ensure energy_profile is in (min, max) tuple format
+        energy_profile = [(0, max_energy_per_slot) for _ in range(num_slots)]
         
         if tec_fo:
             min_energy = self.soc_min * self.capacity

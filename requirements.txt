@@ -4,3 +4,5 @@ datetime
 pulp
 scipy
 np
+docplex
+cplex
