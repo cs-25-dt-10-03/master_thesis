@@ -3,10 +3,10 @@ from classes.DFO import Point, DependencyPolygon, DFO
 
 def find_or_interpolate_points(points: List[Point], dependency_value: float) -> List[Point]:
     """Finds or interpolates points for a given dependency value."""
-    matching_points = [point for point in points if point.x == dependency_value]
+    matching_points = [point for point in points if point.x == dependency_value] # try find exact match
 
     if not matching_points:
-        # Perform linear interpolation if an exact match is not found
+        # Perform linear interpolation if an exact match is not found on points before and after dependency_value
         for k in range(1, len(points) - 1, 2):
             prev_point_min = points[k - 1]
             prev_point_max = points[k]
@@ -87,4 +87,18 @@ def agg2to1(dfo1: DFO, dfo2: DFO, numsamples: int) -> DFO:
 
     aggregated_dfo = DFO(-1, [0], [0], numsamples)
     aggregated_dfo.polygons = aggregated_polygons
+    return aggregated_dfo
+
+def aggnto1(dfos: List[DFO], numsamples: int) -> DFO:
+    """Aggregates multiple DFOs into one using accumulating pairwise aggregation."""
+    if not dfos:
+        raise RuntimeError("No DFOs provided for aggregation. Kind Regards, aggnto1 function")
+
+    # Start aggregation with the first DFO
+    aggregated_dfo = dfos[0]
+
+    # Aggregate subsequent DFOs
+    for i in range(1, len(dfos)):
+        aggregated_dfo = agg2to1(aggregated_dfo, dfos[i], numsamples)
+
     return aggregated_dfo
