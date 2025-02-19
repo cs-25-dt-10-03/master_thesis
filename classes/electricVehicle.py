@@ -64,7 +64,7 @@ class ElectricVehicle:
 
         time_slot_resolution = timedelta(minutes = config.TIME_RESOLUTION)     
 
-        num_slots = int(duration / time_slot_resolution)
+        num_slots = int(duration / time_slot_resolution) + 1 # +1, as polygon generation needs to look one step ahead
 
         initial_energy = self.current_soc * self.capacity
         target_min_energy = self.soc_min * self.capacity
