@@ -31,34 +31,29 @@ class ElectricVehicle:
 
     def sample_start_times(self) -> Tuple[datetime, datetime]:
         arrival_mu = np.log(18)
-        arrival_sigma = 0.15 
+        arrival_sigma = 0.1 
 
-        arrival_hour = int(np.exp(lognorm.rvs(s=arrival_sigma, scale=np.exp(arrival_mu))))
-        arrival_hour = max(12, min(23, arrival_hour))
+        arrival_hour = int(lognorm.rvs(s=arrival_sigma, scale=np.exp(arrival_mu)))
+        charging_window_start= datetime.now().replace(hour=arrival_hour, minute=0, second=0)
 
-        charging_window_start = datetime(hour=arrival_hour, minute=0, second=0)
+        dep_mu = np.log(8)
+        dep_sigma = 0.1
 
-        dep_mu = np.log(3)
-        dep_sigma = 0.3
-
-        departure_offset = int(np.exp(lognorm.rvs(s=dep_sigma, scale=np.exp(dep_mu))))
-        departure_offset = max(1, min(10, departure_offset)) 
-
-        charging_window_end = charging_window_start + timedelta(hours=departure_offset)
+        depature_hour = int(lognorm.rvs(s=dep_sigma, scale=np.exp(dep_mu)))
+        charging_window_end = datetime.now().replace(hour=depature_hour, minute=0, second=0)
 
         return charging_window_start, charging_window_end
 
     def create_flex_offer(self,
                           charging_window_start: datetime,
                           charging_window_end: datetime,
-                          duration: timedelta,
                           tec_fo: bool = False) -> flexOffer:
 
         time_slot_resolution = timedelta(minutes = config.TIME_RESOLUTION)
 
-        latest_start = charging_window_end - duration
+        latest_start = charging_window_end
 
-        num_slots = int(duration / time_slot_resolution)
+        num_slots = int((charging_window_end - charging_window_start)/ time_slot_resolution)
         max_energy_per_slot = self.charging_power * (time_slot_resolution.total_seconds() / 3600) * self.charging_efficiency
 
         # (min, max) tuple format
@@ -78,7 +73,6 @@ class ElectricVehicle:
             offer_id=self.vehicle_id,
             earliest_start=charging_window_start,
             latest_start=latest_start,
-            duration=duration,
             energy_profile=energy_profile,
             min_energy=min_energy,
             max_energy=max_energy,
