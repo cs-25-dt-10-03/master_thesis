@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Tuple
+import numpy as np
+from scipy.stats import lognorm, beta
 from classes.flexOffer import flexOffer
 from config import config
 from classes.DFO import DependencyPolygon, DFO
@@ -22,6 +24,30 @@ class ElectricVehicle:
         self.current_soc = initial_soc if initial_soc is not None else soc_min
 
 
+    def sample_soc(self) -> float:
+        alpha, beta_param = 2, 5
+        sampled_soc = beta.rvs(alpha, beta_param)
+        return self.soc_min + (self.soc_max - self.soc_min) * sampled_soc
+
+    def sample_start_times(self) -> Tuple[datetime, datetime]:
+        arrival_mu = np.log(18)
+        arrival_sigma = 0.15 
+
+        arrival_hour = int(np.exp(lognorm.rvs(s=arrival_sigma, scale=np.exp(arrival_mu))))
+        arrival_hour = max(12, min(23, arrival_hour))
+
+        charging_window_start = datetime(hour=arrival_hour, minute=0, second=0)
+
+        dep_mu = np.log(3)
+        dep_sigma = 0.3
+
+        departure_offset = int(np.exp(lognorm.rvs(s=dep_sigma, scale=np.exp(dep_mu))))
+        departure_offset = max(1, min(10, departure_offset)) 
+
+        charging_window_end = charging_window_start + timedelta(hours=departure_offset)
+
+        return charging_window_start, charging_window_end
+
     def create_flex_offer(self,
                           charging_window_start: datetime,
                           charging_window_end: datetime,
@@ -35,7 +61,7 @@ class ElectricVehicle:
         num_slots = int(duration / time_slot_resolution)
         max_energy_per_slot = self.charging_power * (time_slot_resolution.total_seconds() / 3600) * self.charging_efficiency
 
-        # Ensure energy_profile is in (min, max) tuple format
+        # (min, max) tuple format
         energy_profile = [(0, max_energy_per_slot) for _ in range(num_slots)]
         
         if tec_fo:
