@@ -39,21 +39,28 @@ class ElectricVehicle:
         dep_mu = np.log(8)
         dep_sigma = 0.1
 
-        depature_hour = int(lognorm.rvs(s=dep_sigma, scale=np.exp(dep_mu)))
-        charging_window_end = datetime.now().replace(hour=depature_hour, minute=0, second=0)
+        departure_hour = int(lognorm.rvs(s=dep_sigma, scale=np.exp(dep_mu)))
+        charging_window_end = datetime.now().replace(hour=departure_hour, minute=0, second=0)
+        
+        if departure_hour < arrival_hour:
+            charging_window_end += timedelta(days=1)
+
+
+        print(f"Arrival Time: {charging_window_start.strftime('%H:%M')}")
+        print(f"Departure Time: {charging_window_end.strftime('%H:%M')}")
+
 
         return charging_window_start, charging_window_end
 
-    def create_flex_offer(self,
-                          charging_window_start: datetime,
-                          charging_window_end: datetime,
-                          tec_fo: bool = False) -> flexOffer:
+    def create_flex_offer(self, tec_fo: bool = False) -> flexOffer:
+        earliest_start, end_time = self.sample_start_times()
 
         time_slot_resolution = timedelta(minutes = config.TIME_RESOLUTION)
+ 
+        num_slots = int((end_time - earliest_start) / time_slot_resolution) 
+        print(int((end_time - earliest_start) / time_slot_resolution))
 
-        latest_start = charging_window_end
 
-        num_slots = int((charging_window_end - charging_window_start)/ time_slot_resolution)
         max_energy_per_slot = self.charging_power * (time_slot_resolution.total_seconds() / 3600) * self.charging_efficiency
 
         # (min, max) tuple format
@@ -71,8 +78,8 @@ class ElectricVehicle:
         
         flex_offer = flexOffer(
             offer_id=self.vehicle_id,
-            earliest_start=charging_window_start,
-            latest_start=latest_start,
+            earliest_start=earliest_start,
+            end_time=end_time,
             energy_profile=energy_profile,
             min_energy=min_energy,
             max_energy=max_energy,
