@@ -4,6 +4,7 @@ from classes.electricVehicle import ElectricVehicle
 from config import config
 from classes.DFO import DFO, DependencyPolygon
 from aggregation.DFO_aggregation import agg2to1
+from disaggregation.DFO_disaggregation import disagg1to2, disagg1toN
 
 def main():
     tesla_model_y = ElectricVehicle(
@@ -43,10 +44,25 @@ def main():
     print("Generated DFO for", tesla_model_y.vehicle_id)
     #dfo.print_dfo()
     #print(dfo)
-    dfo1.plot_dfo()
-    dfo2.plot_dfo()
+    #dfo1.plot_dfo()
+    #dfo2.plot_dfo()
     dfo3 = agg2to1(dfo1, dfo2, 4)
     dfo3.plot_dfo()
+    # Create sample DFOs
+
+    # Define a reference schedule
+    yA_ref = [4.0, 8.0, 10.0]
+
+    # Disaggregate into two
+    y1_ref, y2_ref = disagg1to2(dfo1, dfo2, dfo3, yA_ref)
+    print("Disaggregated y1_ref:", y1_ref)
+    print("Disaggregated y2_ref:", y2_ref)
+
+    # Disaggregate into multiple DFOs
+    dfos = [dfo1, dfo2]  # Assume these are the original DFOs
+    y_refs = disagg1toN(dfo3, dfos, yA_ref)
+    print("Disaggregated y_refs:", y_refs)
+
 
 if __name__ == "__main__":
     main()
