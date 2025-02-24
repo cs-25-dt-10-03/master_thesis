@@ -8,7 +8,7 @@ from disaggregation.DFO_disaggregation import disagg1to2, disagg1toN
 
 def main():
     tesla_model_y = ElectricVehicle(
-        vehicle_id="TeslaModelY_1",
+        vehicle_id=1,
         capacity=75.0,
         soc_min=0.20,
         soc_max=0.80,
@@ -18,7 +18,7 @@ def main():
     )
 
     tesla_model_s = ElectricVehicle(
-        vehicle_id="TeslaModelS_1",
+        vehicle_id=2,
         capacity=100.0,
         soc_min=0.40,
         soc_max=0.80,
@@ -40,6 +40,11 @@ def main():
                                    charging_window_end,
                                    duration,
                                    numsamples=4)
+    fo1 = tesla_model_y.create_flex_offer()
+    fo2 = tesla_model_s.create_flex_offer()
+
+    fo1.plot()
+    fo2.plot()
     
     print("Generated DFO for", tesla_model_y.vehicle_id)
     #dfo.print_dfo()

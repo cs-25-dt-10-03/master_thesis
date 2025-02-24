@@ -4,10 +4,10 @@ import numpy as np
 from scipy.stats import lognorm, beta
 from classes.flexOffer import flexOffer
 from config import config
-from classes.DFO import DependencyPolygon, DFO
+from classes.DFO import DFO
 
 class ElectricVehicle:
-    def __init__(self, vehicle_id: str, 
+    def __init__(self, vehicle_id: int, 
                  capacity: float,
                  soc_min: float,
                  soc_max: float,
@@ -64,7 +64,7 @@ class ElectricVehicle:
         max_energy_per_slot = self.charging_power * (time_slot_resolution.total_seconds() / 3600) * self.charging_efficiency
 
         # (min, max) tuple format
-        energy_profile = [(0, max_energy_per_slot) for _ in range(num_slots)]
+        energy_profile = [(float(0), max_energy_per_slot) for _ in range(num_slots)]
         
         if tec_fo:
             min_energy = self.soc_min * self.capacity
