@@ -1,8 +1,8 @@
 from typing import List
 from aggregation.DFO_aggregation import find_or_interpolate_points
-from classes.DFO import Point, DFO, DependencyPolygon
+from classes.DFO import DFO 
 
-def disagg1to2(D1: DFO, D2: DFO, DA: DFO, yA_ref: List[float]) -> (List[float], List[float]):
+def disagg1to2(D1: DFO, D2: DFO, DA: DFO, yA_ref: List[float]) -> tuple[List[float], List[float]]:
     """
     Disaggregates a single aggregated DFO (DA) into two original DFOs (D1 and D2).
     
