@@ -6,8 +6,10 @@ import matplotlib.dates as mdates
 
 class flexOffer:
     def __init__(self, offer_id: str,
-                 earliest_start: datetime,
+                 earliest_start: datetime, 
+                 latest_start: datetime,
                  end_time: datetime,
+                 duration: timedelta,
                  energy_profile: List[Tuple[float, float]],
                  min_energy: Optional[float] = None,
                  max_energy: Optional[float] = None,
@@ -15,12 +17,14 @@ class flexOffer:
         
         self.offer_id = offer_id
         self.earliest_start = earliest_start
+        self.latest_start = latest_start
         self.end_time=end_time
+        self.duration = duration
         self.energy_profile = energy_profile
         self.min_energy = min_energy
+        self.max_energy = max_energy
         self.scheduled_start = None
         self.scheduled_energy_profile = None
-        self.max_energy = max_energy
         self.total_energy_limit = total_energy_limit
 
     @property
@@ -35,6 +39,15 @@ class flexOffer:
     def get_end(self):
         return self.end_time.replace(minute=0, second=0, microsecond=0)
     
+    def possible_start_times(self, time_resolution_minutes: int = config.TIME_RESOLUTION):
+        possible_times = []
+        current_time = self.earliest_start
+        while current_time <= self.latest_start:
+            possible_times.append(current_time)
+            current_time += timedelta(minutes=time_resolution_minutes)
+        return possible_times
+
+
     def __repr__(self):
         return (f"<FlexOffer id={self.offer_id} "
                 f"start_window=({self.get_earliest} - {self.get_end}) "
@@ -46,6 +59,8 @@ class flexOffer:
 
         print(schedule_start)
         print(self.end_time)
+
+        [print(energy) for energy in self.scheduled_energy_profile]
 
         num_slots = len(self.energy_profile)
         if num_slots == 0:
@@ -65,6 +80,12 @@ class flexOffer:
         # Plot minimum energy in blue, flexible energy in orange
         ax.bar(times_num, min_values, width=1/24, align='edge', color='blue', edgecolor='black', label='Minimum Energy')
         ax.bar(times_num, flexible_values, width=1/24, bottom=min_values, align='edge', color='orange', edgecolor='black', label='Flexible Energy')
+
+        if self.scheduled_energy_profile is not None:
+            scheduled_values = self.scheduled_energy_profile  # Extract scheduled energy values
+            
+            for i, (time, scheduled) in enumerate(zip(times_num, scheduled_values)):
+                ax.hlines(scheduled, xmin=time, xmax=time+(1/24), color='black', linestyle='--', linewidth=1.5)
 
         # Shade the charging window (earliest start to charging end)
         if show_window:

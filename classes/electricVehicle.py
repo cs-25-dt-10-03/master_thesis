@@ -13,7 +13,7 @@ class ElectricVehicle:
                  soc_max: float,
                  charging_power: float,
                  charging_efficiency: float,
-                 initial_soc: Optional[float] = None):
+                 ):
         
         self.vehicle_id = vehicle_id
         self.capacity = capacity
@@ -21,8 +21,7 @@ class ElectricVehicle:
         self.soc_max = soc_max
         self.charging_power = charging_power
         self.charging_efficiency = charging_efficiency
-        self.current_soc = initial_soc if initial_soc is not None else soc_min
-
+        self.current_soc = self.sample_soc()
 
     def sample_soc(self) -> float:
         alpha, beta_param = 2, 5
@@ -34,13 +33,13 @@ class ElectricVehicle:
         arrival_sigma = 0.1 
 
         arrival_hour = int(lognorm.rvs(s=arrival_sigma, scale=np.exp(arrival_mu)))
-        charging_window_start= datetime.now().replace(hour=arrival_hour, minute=0, second=0)
+        charging_window_start= datetime.now().replace(year=2024, hour=arrival_hour, minute=0, second=0, microsecond=0)
 
         dep_mu = np.log(8)
         dep_sigma = 0.1
 
         departure_hour = int(lognorm.rvs(s=dep_sigma, scale=np.exp(dep_mu)))
-        charging_window_end = datetime.now().replace(hour=departure_hour, minute=0, second=0)
+        charging_window_end = datetime.now().replace(year=2024, hour=departure_hour, minute=0, second=0, microsecond=0)
         
         if departure_hour < arrival_hour:
             charging_window_end += timedelta(days=1)
@@ -52,14 +51,31 @@ class ElectricVehicle:
 
         return charging_window_start, charging_window_end
 
+
     def create_flex_offer(self, tec_fo: bool = False) -> flexOffer:
         earliest_start, end_time = self.sample_start_times()
+        print(self.current_soc)
+
+
+        if tec_fo == True:
+            target_soc = self.soc_max  #The tec fo should have the capability to reach max soc.
+            required_energy = (target_soc - self.current_soc) * self.capacity  # kWh
+        else:
+            required_energy = 0
+
+        # **Compute Charging Time Needed**
+        if required_energy > 0:
+            charging_time = required_energy / (self.charging_power * self.charging_efficiency)  # Hours
+            charging_time = timedelta(minutes=charging_time, seconds=0, milliseconds=0)
+        else:
+            charging_time = timedelta(minutes=0)  # No charging needed
+
+        latest_start = end_time - charging_time  # Ensure full charge before departure
+        duration = end_time - latest_start
 
         time_slot_resolution = timedelta(minutes = config.TIME_RESOLUTION)
  
         num_slots = int((end_time - earliest_start) / time_slot_resolution) 
-        print(int((end_time - earliest_start) / time_slot_resolution))
-
 
         max_energy_per_slot = self.charging_power * (time_slot_resolution.total_seconds() / 3600) * self.charging_efficiency
 
@@ -74,12 +90,13 @@ class ElectricVehicle:
             min_energy = None
             max_energy = None
             total_energy_limit = None
-
         
         flex_offer = flexOffer(
             offer_id=self.vehicle_id,
             earliest_start=earliest_start,
+            latest_start=latest_start,
             end_time=end_time,
+            duration=duration,
             energy_profile=energy_profile,
             min_energy=min_energy,
             max_energy=max_energy,
