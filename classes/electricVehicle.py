@@ -119,7 +119,7 @@ class ElectricVehicle:
             min_prev.append(max(additional_min - self.charging_power * i, 0))
             max_prev.append(min(self.charging_power * i, additional_max))
         min_prev.reverse()
-        dfo = DFO(self.vehicle_id, min_prev, max_prev, numsamples, self.charging_power, additional_min, additional_max)
+        dfo = DFO(self.vehicle_id, min_prev, max_prev, numsamples, self.charging_power, additional_min, additional_max, charging_window_start)
         dfo.generate_dependency_polygons()
         return dfo
 
