@@ -33,7 +33,7 @@ class flexOffer:
         for _, max in self.energy_profile:
             amount += max
         return amount
-    
+
     @property
     def get_earliest(self):
         return self.earliest_start.replace(minute=0, second=0, microsecond=0)

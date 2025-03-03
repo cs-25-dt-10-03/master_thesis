@@ -5,3 +5,4 @@ pulp
 scipy
 np
 matplotlib
+pytest

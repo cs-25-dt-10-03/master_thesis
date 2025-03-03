@@ -14,7 +14,7 @@ class ElectricVehicle:
                  charging_power: float,
                  charging_efficiency: float,
                  ):
-        
+
         self.vehicle_id = vehicle_id
         self.capacity = capacity
         self.soc_min = soc_min
@@ -54,8 +54,6 @@ class ElectricVehicle:
 
     def create_flex_offer(self, tec_fo: bool = False) -> flexOffer:
         earliest_start, end_time = self.sample_start_times()
-        print(self.current_soc)
-
 
         if tec_fo == True:
             target_soc = self.soc_max  #The tec fo should have the capability to reach max soc.
@@ -72,9 +70,7 @@ class ElectricVehicle:
 
         latest_start = end_time - charging_time  # Ensure full charge before departure
         duration = end_time - latest_start
-
         time_slot_resolution = timedelta(minutes = config.TIME_RESOLUTION)
- 
         num_slots = int((end_time - earliest_start) / time_slot_resolution) 
 
         max_energy_per_slot = self.charging_power * (time_slot_resolution.total_seconds() / 3600) * self.charging_efficiency
