@@ -4,7 +4,7 @@ from classes.DFO import DFO
 
 def disagg1to2(D1: DFO, D2: DFO, DA: DFO, yA_ref: List[float]) -> tuple[List[float], List[float]]:
     """
-    Disaggregates a single aggregated DFO (DA) into two original DFOs (D1 and D2).
+    Disaggregates a single aggregated DFO (DA) into two original DFOs (D1 and D2), accounting for start time offsets.
     
     Args:
         D1 (DFO): First original DFO.
@@ -20,18 +20,36 @@ def disagg1to2(D1: DFO, D2: DFO, DA: DFO, yA_ref: List[float]) -> tuple[List[flo
     if T != len(yA_ref):
         raise RuntimeError("Mismatch between DA timesteps and yA_ref size. Kind regards, disagg1to2 function")
 
-    # Initialize energy dependency amounts
+    # Determine offsets in start time
+    start_time = min(D1.earliest_start, D2.earliest_start)
+    offset_1 = int((D1.earliest_start - start_time).total_seconds() // 3600)
+    offset_2 = int((D2.earliest_start - start_time).total_seconds() // 3600)
+
+    # Determine how many timesteps each DFO overlaps with DA
+    overlap_start = max(offset_1, offset_2)
+    overlap_end = min(len(D1.polygons) + offset_1, len(D2.polygons) + offset_2, T)
+
+    # Initialize output lists
+    y1_ref = [0.0] * len(D1.polygons)
+    y2_ref = [0.0] * len(D2.polygons)
+
     dA, d1, d2 = 0.0, 0.0, 0.0
 
-    # Output lists
-    y1_ref = [0.0] * T
-    y2_ref = [0.0] * T
+    # Assign reference values directly for non-overlapping start
+    for i in range(offset_2):
+        y1_ref[i] = yA_ref[i]  # Assign entire aggregated schedule to DFO1 if it starts earlier
+        d1 += yA_ref[i]
+        dA += yA_ref[i]
+    for i in range(offset_1):
+        y2_ref[i] = yA_ref[i]  # Assign entire aggregated schedule to DFO2 if it starts earlier
+        d2 += yA_ref[i]
+        dA += yA_ref[i]
 
-    for i in range(T):
-        # Get DFO slice for the timestep
+    # Handle overlapping section using normal interpolation logic
+    for i in range(overlap_start, overlap_end):
         polygonA = DA.polygons[i]
-        polygon1 = D1.polygons[i]
-        polygon2 = D2.polygons[i]
+        polygon1 = D1.polygons[i - offset_1]
+        polygon2 = D2.polygons[i - offset_2]
 
         # Find points with the respective energy dependency for DFO A, DFO 1, and DFO 2
         matching_pointsA = find_or_interpolate_points(polygonA.points, dA)
@@ -44,15 +62,22 @@ def disagg1to2(D1: DFO, D2: DFO, DA: DFO, yA_ref: List[float]) -> tuple[List[flo
 
         # Use scaling factor on DFO 1 and 2 to determine their energy usage
         point1_1, point1_2 = matching_points1[0], matching_points1[1]
-        y1_ref[i] = point1_1.y + f * (point1_2.y - point1_1.y)
+        y1_ref[i - offset_1] = point1_1.y + f * (point1_2.y - point1_1.y)
 
         point2_1, point2_2 = matching_points2[0], matching_points2[1]
-        y2_ref[i] = point2_1.y + f * (point2_2.y - point2_1.y)
+        y2_ref[i - offset_2] = point2_1.y + f * (point2_2.y - point2_1.y)
 
         # Update dependency amounts
         dA += yA_ref[i]
-        d1 += y1_ref[i]
-        d2 += y2_ref[i]
+        d1 += y1_ref[i - offset_1]
+        d2 += y2_ref[i - offset_2]
+
+    # Assign reference values directly for non-overlapping end
+    for i in range(overlap_end, T):
+        if i >= len(D1.polygons) + offset_1:
+            y2_ref[i - offset_2] = yA_ref[i]  # Assign remaining schedule to DFO2 if it extends longer
+        if i >= len(D2.polygons) + offset_2:
+            y1_ref[i - offset_1] = yA_ref[i]  # Assign remaining schedule to DFO1 if it extends longer
 
     return y1_ref, y2_ref
 
