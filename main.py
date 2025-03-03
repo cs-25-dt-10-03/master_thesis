@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from classes.electricVehicle import ElectricVehicle
 from config import config
 from classes.DFO import DFO, DependencyPolygon
-from aggregation.DFO_aggregation import agg2to1
+from aggregation.DFO_aggregation import agg2to1, aggnto1
 from disaggregation.DFO_disaggregation import disagg1to2, disagg1toN
 from database.dataManager import fetch_all_offers
 
@@ -50,18 +50,24 @@ def main():
                                    charging_window_end,
                                    duration,
                                    numsamples=4)
+    
+    dfo3 = tesla_model_s.create_dfo(charging_window_start+timedelta(hours=2),
+                                   charging_window_end,
+                                   duration,
+                                   numsamples=4)
 
-    print("Generated DFO for", tesla_model_y.vehicle_id)
+    #print("Generated DFO for", tesla_model_y.vehicle_id)
     #dfo.print_dfo()
     #print(dfo)
-    dfo1.plot_dfo()
-    dfo2.plot_dfo()
-    dfo3 = agg2to1(dfo1, dfo2, 4)
-    dfo3.plot_dfo()
+    #dfo1.plot_dfo()
+    #dfo2.plot_dfo()
+    dfos = [dfo1, dfo2, dfo3]  # Assume these are the original DFOs
+    dfo5 = aggnto1(dfos, 4)
+    dfo5.plot_dfo()
     # Create sample DFOs
 
     # Define a reference schedule
-    #yA_ref = [4.0, 8.0, 10.0]
+    yA_ref = [4.0, 8.0, 10.0, 12.0, 6.0]
 
     # Disaggregate into two
     #y1_ref, y2_ref = disagg1to2(dfo1, dfo2, dfo3, yA_ref)
@@ -69,9 +75,8 @@ def main():
     #print("Disaggregated y2_ref:", y2_ref)
 
     # Disaggregate into multiple DFOs
-    #dfos = [dfo1, dfo2]  # Assume these are the original DFOs
-    #y_refs = disagg1toN(dfo3, dfos, yA_ref)
-    #print("Disaggregated y_refs:", y_refs)
+    y_refs = disagg1toN(dfo5, dfos, yA_ref)
+    print("Disaggregated y_refs:", y_refs)
     
 
 if __name__ == "__main__":
