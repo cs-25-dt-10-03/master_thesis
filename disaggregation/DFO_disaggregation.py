@@ -84,13 +84,14 @@ def disagg1to2(D1: DFO, D2: DFO, DA: DFO, yA_ref: List[float]) -> tuple[List[flo
 
 def disagg1toN(DA: DFO, DFOs: List[DFO], yA_ref: List[float]) -> List[List[float]]:
     """
-    Disaggregates a single aggregated DFO (DA) into multiple original DFOs (DFOs).
-    
+    Disaggregates a single aggregated DFO (DA) into multiple original DFOs (DFOs), 
+    ensuring that only the DFOs active in a given hour participate in the disaggregation.
+
     Args:
         DA (DFO): Aggregated DFO.
         DFOs (List[DFO]): List of original DFOs.
         yA_ref (List[float]): Reference schedule for the aggregated DFO.
-    
+
     Returns:
         y_refs (List[List[float]]): Disaggregated schedules for each DFO.
     """
@@ -100,34 +101,51 @@ def disagg1toN(DA: DFO, DFOs: List[DFO], yA_ref: List[float]) -> List[List[float
     if T != len(yA_ref):
         raise RuntimeError("Mismatch between DA timesteps and yA_ref size. Kind regards, disagg1toN function")
 
-    # Initialize energy dependency amounts for all DFOs
-    d = [0.0] * N  # Dependency amounts for individual DFOs
-    dA = 0.0       # Dependency amount for aggregated DFO
+    # Find the earliest start time across all DFOs
+    start_time = min(dfo.earliest_start for dfo in DFOs)
+    
+    # Calculate offsets for each DFO
+    offsets = [int((dfo.earliest_start - start_time).total_seconds() // 3600) for dfo in DFOs]
 
-    # Initialize output list
-    y_refs = [[0.0] * T for _ in range(N)]
+    # Compute end times for each DFO
+    end_times = [offsets[i] + len(DFOs[i].polygons) for i in range(N)]
 
+    # Initialize output lists
+    y_refs = [[0.0] * len(dfo.polygons) for dfo in DFOs]
+
+    # Initialize dependency tracking
+    dA = 0.0
+    d = [0.0] * N  # Dependency amounts for each DFO
+
+    # Iterate over each timestep in the aggregated DFO
     for i in range(T):
         # Get the polygon slice for the timestep
         polygonA = DA.polygons[i]
 
+        # Determine which DFOs are active at this timestep
+        active_dfo_indices = [j for j in range(N) if offsets[j] <= i < end_times[j]]
+        active_count = len(active_dfo_indices)
+
+        # If no DFOs are active, skip this timestep
+        if active_count == 0:
+            continue
+
         # Find points with the respective energy dependency for aggregated DFO A
         matching_pointsA = find_or_interpolate_points(polygonA.points, dA)
+        pointA1, pointA2 = matching_pointsA[0], matching_pointsA[1]
 
         # Calculate scaling factor f based on the reference schedule
-        pointA1, pointA2 = matching_pointsA[0], matching_pointsA[1]
         f = 0 if (pointA2.y - pointA1.y) == 0 else (yA_ref[i] - pointA1.y) / (pointA2.y - pointA1.y)
 
-        # Disaggregate for each individual DFO
-        for j in range(N):
-            polygon = DFOs[j].polygons[i]
+        # Disaggregate among active DFOs
+        for j in active_dfo_indices:
+            polygon = DFOs[j].polygons[i - offsets[j]]
             matching_points = find_or_interpolate_points(polygon.points, d[j])
-
             point1, point2 = matching_points[0], matching_points[1]
-            y_refs[j][i] = point1.y + f * (point2.y - point1.y)
 
             # Update dependency amount for the current DFO
-            d[j] += y_refs[j][i]
+            y_refs[j][i - offsets[j]] = point1.y + f * (point2.y - point1.y)
+            d[j] += y_refs[j][i - offsets[j]]
 
         # Update dependency amount for the aggregated DFO
         dA += yA_ref[i]
