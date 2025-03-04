@@ -94,11 +94,6 @@ class FlexOffer:
         if schedule_start is None:
             schedule_start = self.earliest_start
 
-        print(schedule_start)
-        print(self.end_time)
-
-        [print(energy) for energy in self.scheduled_energy_profile]
-
         num_slots = len(self.energy_profile)
         if num_slots == 0:
             raise ValueError("Energy profile is empty, nothing to plot.")

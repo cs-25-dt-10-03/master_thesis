@@ -66,15 +66,14 @@ class ElectricVehicle:
             charging_time = required_energy / (self.charging_power * self.charging_efficiency)  # Hours
             charging_time = timedelta(minutes=charging_time, seconds=0, milliseconds=0)
         else:
-            charging_time = timedelta(minutes=0)  # No charging needed
+            charging_time = timedelta(minutes=0)
 
-        latest_start = end_time - charging_time  # Ensure full charge before departure
+        latest_start = end_time - charging_time
         duration = end_time - latest_start
-        time_slot_resolution = timedelta(minutes = config.TIME_RESOLUTION)
+        time_slot_resolution = timedelta(seconds = config.TIME_RESOLUTION)
         num_slots = int((end_time - earliest_start) / time_slot_resolution) 
 
         max_energy_per_slot = self.charging_power * (time_slot_resolution.total_seconds() / config.TIME_RESOLUTION) * self.charging_efficiency
-
         # (min, max) tuple format
         energy_profile = [(float(0), max_energy_per_slot) for _ in range(num_slots)]
         
