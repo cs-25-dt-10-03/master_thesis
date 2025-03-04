@@ -7,6 +7,5 @@ class SpotPriceData:
         self.data.reset_index(drop=True, inplace=True)
 
     def get_price_by_datetime(self, dt) -> float:
-        diffs = (self.data['HourDK'] - dt).abs()
-        idx = diffs.idxmin()
+        idx = (self.data['HourDK'] - dt).abs()
         return self.data.loc[idx, 'SpotPriceEUR']
