@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 import numpy as np
 from scipy.stats import beta, lognorm
 from classes.electricVehicle import ElectricVehicle
-from classes.flexOffer import flexOffer
+from classes.flexOffer import FlexOffer
 from classes.DFO import DFO
 from config import config
 
@@ -44,7 +44,7 @@ def test_create_flex_offer():
     # Request a technical flex offer so that min_energy, etc. are set.
     fo = ev.create_flex_offer(tec_fo=True)
     # Check that we obtain a flexOffer instance.
-    assert isinstance(fo, flexOffer)
+    assert isinstance(fo, FlexOffer)
     # The energy profile should be non-empty.
     assert len(fo.energy_profile) > 0
     # For tec flex offers, min_energy should be defined.

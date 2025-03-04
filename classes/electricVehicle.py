@@ -52,7 +52,7 @@ class ElectricVehicle:
         return charging_window_start, charging_window_end
 
 
-    def create_flex_offer(self, tec_fo: bool = False) -> flexOffer:
+    def create_flex_offer(self, tec_fo: bool = False) -> FlexOffer:
         earliest_start, end_time = self.sample_start_times()
 
         if tec_fo == True:

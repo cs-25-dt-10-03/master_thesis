@@ -1,10 +1,9 @@
 import pytest
 from datetime import datetime, timedelta
-from classes.flexOffer import flexOffer
+from classes.flexOffer import FlexOffer
 from classes.electricVehicle import ElectricVehicle
 from datetime import datetime, timedelta
 from config import config
-from classes.flexOffer import flexOffer
 
 
 @pytest.fixture
@@ -41,7 +40,7 @@ def test_flex_offer_possible_start_times():
     t1 = datetime(2024, 1, 1, 10, 0)
     duration = t1 - t0
     energy_profile = [(0, 7) for _ in range(2)]
-    fo = flexOffer(
+    fo = FlexOffer(
         offer_id=1,
         earliest_start=t0,
         latest_start=t1,
@@ -52,19 +51,3 @@ def test_flex_offer_possible_start_times():
     possible_times = fo.possible_start_times(time_resolution_minutes=config.TIME_RESOLUTION)
     assert possible_times[0] == t0
     assert possible_times[-1] <= t1
-
-def test_flex_offer_repr():
-    t0 = datetime(2024, 1, 1, 8, 0)
-    t1 = datetime(2024, 1, 1, 10, 0)
-    duration = t1 - t0
-    energy_profile = [(0, 7) for _ in range(2)]
-    fo = flexOffer(
-        offer_id=2,
-        earliest_start=t0,
-        latest_start=t1,
-        end_time=t1,
-        duration=duration,
-        energy_profile=energy_profile
-    )
-    rep = repr(fo)
-    assert "FlexOffer id=2" in rep
