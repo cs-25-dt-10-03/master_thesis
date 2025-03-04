@@ -1,3 +1,4 @@
+from datetime import datetime
 import matplotlib.pyplot as plt
 from scipy.spatial import ConvexHull
 import numpy as np
@@ -74,7 +75,8 @@ class DFO:
         numsamples: int = 5,
         charging_power: Optional[float] = None,
         min_total_energy: Optional[float] = None, 
-        max_total_energy: Optional[float] = None
+        max_total_energy: Optional[float] = None,
+        earliest_start: Optional[datetime] = None
     ):
         self.dfo_id = dfo_id
         self.polygons: List[DependencyPolygon] = [
@@ -84,6 +86,9 @@ class DFO:
         self.charging_power = charging_power if charging_power is not None else 7.3  # Default charging power
         self.min_total_energy = min_total_energy if min_total_energy is not None else min_prev[-1] # Last element in min_prev
         self.max_total_energy = max_total_energy if max_total_energy is not None else max_prev[-1] # Last element in max_prev
+
+        self.earliest_start = earliest_start if earliest_start is not None else datetime.now()
+        self.latest_start = self.earliest_start
      
     def generate_dependency_polygons(self):
         for i in range(len(self.polygons)):
