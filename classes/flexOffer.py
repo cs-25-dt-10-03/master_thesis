@@ -4,7 +4,7 @@ from typing import Optional, List, Tuple
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
-class flexOffer:
+class FlexOffer:
     def __init__(self, offer_id: int,
                  earliest_start: datetime,
                  end_time: datetime,
@@ -37,11 +37,43 @@ class flexOffer:
     @property
     def get_end(self):
         return self.end_time.replace(minute=0, second=0, microsecond=0)
+
+    def plus(self, diffInTime: float, profile: List[Tuple[float, float]]) -> None:
+        prof: List[Tuple[float, float]] = profile.copy()
+        agg_prof: List[Tuple[float, float]] = self.energy_profile.copy()
+        tmp: List[Tuple[float, float]] = []
+
+        while(diffInTime < 0 and agg_prof):
+            tmp.append(agg_prof[0])
+            del agg_prof[0]
+            diffInTime += timedelta(seconds=config.TIME_RESOLUTION).total_seconds()
+        while(diffInTime < 0 and not agg_prof):
+            tmp.append((0.0,0.0))
+            diffInTime += timedelta(seconds=config.TIME_RESOLUTION).total_seconds()
+        while(diffInTime > 0 and prof):
+            tmp.append(prof[0])
+            del prof[0]
+            diffInTime -= timedelta(seconds=config.TIME_RESOLUTION).total_seconds()
+        while(diffInTime > 0 and not prof):
+            tmp.append((0.0,0.0))
+            diffInTime -= timedelta(seconds=config.TIME_RESOLUTION).total_seconds()
+        while(prof and agg_prof):
+            tmp.append((prof[0][0] + agg_prof[0][0], prof[0][1] + agg_prof[0][1]))
+            del prof[0]
+            del agg_prof[0]
+        while(prof):
+            tmp.append(prof[0])
+            del prof[0]
+        while(agg_prof):
+            tmp.append(agg_prof[0])
+            del agg_prof[0]
+
+        self.energy_profile = tmp
     
     def __repr__(self):
         return (f"<FlexOffer id={self.offer_id} "
                 f"start_window=({self.get_earliest} - {self.get_end}) "
-                f"duration={self.get_end - self.get_earliest } total_energy={self.total_energy}>")
+                f"duration={len(self.energy_profile)} total_energy={self.total_energy}>")
 
     def plot(self, schedule_start: Optional[datetime] = None, show_window: bool = True):
         if schedule_start is None:
@@ -55,7 +87,7 @@ class flexOffer:
             raise ValueError("Energy profile is empty, nothing to plot.")
 
         # Compute time step
-        time_slot_resolution = timedelta(minutes = config.TIME_RESOLUTION)
+        time_slot_resolution = timedelta(seconds = config.TIME_RESOLUTION)
 
         times = [schedule_start + i * time_slot_resolution for i in range(num_slots)]
         times_num = [mdates.date2num(t) for t in times]
