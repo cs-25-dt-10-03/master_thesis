@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Tuple
 import numpy as np
 from scipy.stats import lognorm, beta
-from classes.flexOffer import flexOffer
+from classes.flexOffer import FlexOffer
 from config import config
 from classes.DFO import DFO
 
@@ -73,7 +73,7 @@ class ElectricVehicle:
         time_slot_resolution = timedelta(minutes = config.TIME_RESOLUTION)
         num_slots = int((end_time - earliest_start) / time_slot_resolution) 
 
-        max_energy_per_slot = self.charging_power * (time_slot_resolution.total_seconds() / 3600) * self.charging_efficiency
+        max_energy_per_slot = self.charging_power * (time_slot_resolution.total_seconds() / config.TIME_RESOLUTION) * self.charging_efficiency
 
         # (min, max) tuple format
         energy_profile = [(float(0), max_energy_per_slot) for _ in range(num_slots)]
@@ -87,7 +87,7 @@ class ElectricVehicle:
             max_energy = None
             total_energy_limit = None
         
-        flex_offer = flexOffer(
+        flex_offer = FlexOffer(
             offer_id=self.vehicle_id,
             earliest_start=earliest_start,
             latest_start=latest_start,
@@ -102,7 +102,7 @@ class ElectricVehicle:
     
     def create_dfo(self, charging_window_start: datetime, charging_window_end: datetime, duration, numsamples) -> DFO:
 
-        time_slot_resolution = timedelta(minutes = config.TIME_RESOLUTION)     
+        time_slot_resolution = timedelta(seconds = config.TIME_RESOLUTION)     
 
         num_slots = int(duration / time_slot_resolution) + 1
 

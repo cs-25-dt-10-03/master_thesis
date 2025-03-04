@@ -5,6 +5,7 @@ from classes.DFO import DFO, DependencyPolygon
 from aggregation.DFO_aggregation import agg2to1, aggnto1
 from disaggregation.DFO_disaggregation import disagg1to2, disagg1toN
 from database.dataManager import fetch_all_offers
+from aggregation.alignments import startAlignment
 
 def main():
     tesla_model_y = ElectricVehicle(

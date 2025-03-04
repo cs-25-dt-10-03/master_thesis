@@ -2,7 +2,7 @@ import sqlite3
 import os
 from datetime import datetime
 
-from classes.flexOffer import flexOffer
+from classes.flexOffer import FlexOffer
 
 DB_PATH = os.path.dirname(os.path.abspath(__file__))
 DB_NAME = os.path.join(DB_PATH, "data.db")
@@ -73,13 +73,13 @@ def insertData(fo):
         est = int(fo.earliest_start.timestamp())
         et = int(fo.end_time.timestamp())
 
-        if isinstance(fo, flexOffer) and fo.total_energy_limit is not None:
+        if isinstance(fo, FlexOffer) and fo.total_energy_limit is not None:
             cursor.execute('''
                 INSERT INTO tec (id, est, et, min_energy, max_energy, total_energy_limit)
                 VALUES (?, ?, ?, ?, ?, ?);
             ''', (offer_id, est, et, fo.min_energy, fo.max_energy, fo.total_energy_limit))
 
-        elif isinstance(fo, flexOffer):
+        elif isinstance(fo, FlexOffer):
             cursor.execute('''
                 INSERT INTO sfo (id, est, et)
                 VALUES (?, ?, ?);
