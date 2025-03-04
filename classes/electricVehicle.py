@@ -52,7 +52,7 @@ class ElectricVehicle:
         return charging_window_start, charging_window_end
 
 
-    def create_flex_offer(self, tec_fo: bool = False) -> flexOffer:
+    def create_flex_offer(self, tec_fo: bool = False) -> FlexOffer:
         earliest_start, end_time = self.sample_start_times()
 
         if tec_fo == True:
@@ -66,15 +66,14 @@ class ElectricVehicle:
             charging_time = required_energy / (self.charging_power * self.charging_efficiency)  # Hours
             charging_time = timedelta(minutes=charging_time, seconds=0, milliseconds=0)
         else:
-            charging_time = timedelta(minutes=0)  # No charging needed
+            charging_time = timedelta(minutes=0)
 
-        latest_start = end_time - charging_time  # Ensure full charge before departure
+        latest_start = end_time - charging_time
         duration = end_time - latest_start
-        time_slot_resolution = timedelta(minutes = config.TIME_RESOLUTION)
+        time_slot_resolution = timedelta(seconds = config.TIME_RESOLUTION)
         num_slots = int((end_time - earliest_start) / time_slot_resolution) 
 
         max_energy_per_slot = self.charging_power * (time_slot_resolution.total_seconds() / config.TIME_RESOLUTION) * self.charging_efficiency
-
         # (min, max) tuple format
         energy_profile = [(float(0), max_energy_per_slot) for _ in range(num_slots)]
         
@@ -104,7 +103,7 @@ class ElectricVehicle:
 
         time_slot_resolution = timedelta(seconds = config.TIME_RESOLUTION)     
 
-        num_slots = int(duration / time_slot_resolution) + 1 # +1, as polygon generation needs to look one step ahead
+        num_slots = int(duration / time_slot_resolution) + 1
 
         initial_energy = self.current_soc * self.capacity
         target_min_energy = self.soc_min * self.capacity

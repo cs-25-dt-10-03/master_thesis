@@ -86,16 +86,13 @@ class FlexOffer:
     def __repr__(self):
         return (f"<FlexOffer id={self.offer_id} "
                 f"start_window=({self.get_earliest} - {self.get_end}) "
-                f"duration={len(self.energy_profile)} total_energy={self.total_energy}>")
+                f"duration={self.get_end - self.get_earliest } total_energy={self.total_energy}>"
+                f"scheduled start={self.scheduled_start}")
+
 
     def plot(self, schedule_start: Optional[datetime] = None, show_window: bool = True):
         if schedule_start is None:
             schedule_start = self.earliest_start
-
-        print(schedule_start)
-        print(self.end_time)
-
-        [print(energy) for energy in self.scheduled_energy_profile]
 
         num_slots = len(self.energy_profile)
         if num_slots == 0:
