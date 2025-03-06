@@ -35,7 +35,6 @@ def test_update_soc(ev):
 
 
 def test_flex_offer_possible_start_times():
-    # Create a dummy flexOffer with a known time window.
     t0 = datetime(2024, 1, 1, 8, 0)
     t1 = datetime(2024, 1, 1, 10, 0)
     duration = t1 - t0

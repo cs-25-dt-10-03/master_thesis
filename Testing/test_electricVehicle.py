@@ -41,13 +41,9 @@ def test_create_flex_offer():
         charging_power=7,
         charging_efficiency=0.95
     )
-    # Request a technical flex offer so that min_energy, etc. are set.
     fo = ev.create_flex_offer(tec_fo=True)
-    # Check that we obtain a flexOffer instance.
     assert isinstance(fo, FlexOffer)
-    # The energy profile should be non-empty.
     assert len(fo.energy_profile) > 0
-    # For tec flex offers, min_energy should be defined.
     assert fo.min_energy is not None
 
 def test_create_dfo():
@@ -62,7 +58,6 @@ def test_create_dfo():
     start_time, end_time = ev.sample_start_times()
     duration = end_time - start_time
     dfo = ev.create_dfo(start_time, end_time, duration, numsamples=5)
-    # After generating dependency polygons, dfo.polygons should not be empty.
     assert len(dfo.polygons) > 0
 
 def test_update_soc():

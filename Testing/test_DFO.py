@@ -1,12 +1,9 @@
 import pytest
 from datetime import datetime, timedelta
-from classes.flexOffer import flexOffer
+from classes.flexOffer import FlexOffer
 from classes.DFO import DFO
 from classes.electricVehicle import ElectricVehicle
 from aggregation.DFO_aggregation import agg2to1, aggnto1
-
-import pytest
-from datetime import datetime
 import numpy as np
 from classes.DFO import DFO, DependencyPolygon, Point
 
@@ -75,10 +72,8 @@ def test_DFO_generate_dependency_polygons():
     assert len(dfo.polygons) == len(min_prev) - 1
 
 
-
 def test_agg2to1_and_aggnto1():
     t0 = datetime(2024, 1, 1, 8, 0)
-    # DFO1 with two polygons
     min_prev1 = [5, 3]
     max_prev1 = [10, 8]
     dfo1 = DFO(

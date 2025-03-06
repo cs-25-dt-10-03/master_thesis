@@ -1,4 +1,9 @@
-import flexoffer_logic
+from datetime import datetime, timedelta
+from typing import List
+import flexoffer_logic 
+from classes.flexOffer import FlexOffer
+
+
 
 # Create a TimeSlice
 ts1 = flexoffer_logic.TimeSlice(1.0, 2.0)
@@ -11,4 +16,3 @@ fo = flexoffer_logic.Flexoffer(1, 1, 2, 4, [ts1, ts2], 2)
 print(fo.get_offer_id())
 print(fo.get_est_hour())
 print(fo.get_total_energy()) 
-

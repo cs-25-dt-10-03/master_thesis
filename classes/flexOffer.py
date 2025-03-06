@@ -39,6 +39,19 @@ class FlexOffer:
         return self.earliest_start.replace(minute=0, second=0, microsecond=0)
     
     @property
+    def get_latest(self):
+        return self.latest_start.replace(minute=0, second=0, microsecond=0)
+    
+
+    @property
+    def get_min_profile(self) -> List[float]:
+        return [e[0] for e in self.energy_profile]  # Extract min values
+
+    @property
+    def get_max_profile(self) -> List[float]:
+        return [e[1] for e in self.energy_profile]  # Extract max values
+
+    @property
     def get_end(self):
         return self.end_time.replace(minute=0, second=0, microsecond=0)
 
@@ -85,8 +98,8 @@ class FlexOffer:
 
     def __repr__(self):
         return (f"<FlexOffer id={self.offer_id} "
-                f"start_window=({self.get_earliest} - {self.get_end}) "
-                f"duration={self.get_end - self.get_earliest } total_energy={self.total_energy}>"
+                f"start_window=({self.get_earliest} - {self.get_latest}) "
+                f"duration={self.get_end - self.get_earliest } toal_energy={self.total_energy}>"
                 f"scheduled start={self.scheduled_start}")
 
 
