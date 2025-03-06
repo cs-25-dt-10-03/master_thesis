@@ -1,8 +1,10 @@
 from datetime import datetime, timedelta
 from typing import Optional, Tuple
 import numpy as np
+from helpers import dt_to_unix
 from scipy.stats import lognorm, beta
 from classes.flexOffer import FlexOffer
+from flexoffer_logic import Flexoffer, TimeSlice 
 from config import config
 from classes.DFO import DFO
 
@@ -70,34 +72,28 @@ class ElectricVehicle:
 
         latest_start = end_time - charging_time
         duration = end_time - latest_start
-        time_slot_resolution = timedelta(seconds = config.TIME_RESOLUTION)
-        num_slots = int((end_time - earliest_start) / time_slot_resolution) 
-
+        time_slot_resolution = timedelta(seconds=config.TIME_RESOLUTION)
+        num_slots = int((end_time - earliest_start) / time_slot_resolution)
         max_energy_per_slot = self.charging_power * (time_slot_resolution.total_seconds() / config.TIME_RESOLUTION) * self.charging_efficiency
-        # (min, max) tuple format
-        energy_profile = [(float(0), max_energy_per_slot) for _ in range(num_slots)]
-        
+        energy_profile = [ (0.0, max_energy_per_slot) for _ in range(num_slots)]
+
         if tec_fo:
             min_energy = self.soc_min * self.capacity
             max_energy = self.soc_max * self.capacity
-            total_energy_limit = self.capacity
         else:
-            min_energy = None
-            max_energy = None
-            total_energy_limit = None
+            min_energy = 0
+            max_energy = 0
         
-        flex_offer = FlexOffer(
+        return Flexoffer(
             offer_id=self.vehicle_id,
-            earliest_start=earliest_start,
-            latest_start=latest_start,
-            end_time=end_time,
-            duration=duration,
-            energy_profile=energy_profile,
-            min_energy=min_energy,
-            max_energy=max_energy,
-            total_energy_limit=total_energy_limit
+            earliest_start=dt_to_unix(earliest_start),
+            latest_start=dt_to_unix(latest_start),
+            end_time=dt_to_unix(end_time),
+            profile= [TimeSlice(min_val, max_val) for (min_val, max_val) in energy_profile],
+            duration=num_slots,
+            min_overall_alloc=min_energy,
+            max_overall_alloc=max_energy
         )
-        return flex_offer
     
     def create_dfo(self, charging_window_start: datetime, charging_window_end: datetime, duration, numsamples) -> DFO:
 
