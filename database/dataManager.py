@@ -18,6 +18,17 @@ def initializeDatabase():
                        )
                    ''')
 
+    cursor.execute('''
+                   CREATE TABLE IF NOT EXISTS mfrrPrices(
+                       datetime TEXT PRIMARY KEY UNIQUE,
+                       priceArea TEXT NOT NULL,
+                       downPurchased REAL NOT NULL,
+                       downPrice REAL NOT NULL,
+                       upPurchased REAL NOT NULL,
+                       upPrice REAL NOT NULL
+                       )
+
+                   ''')
     conn.commit()
     conn.close()
     print("Tables initialized.")
@@ -31,11 +42,44 @@ def insertSpotPriceData(file: str) -> None:
         to_db = [(i['HourDK'], i['PriceArea'], i['SpotPriceEUR']) for i in dr]
 
     cursor.executemany('''
-                       INSERT OR REPLACE INTO spotPrices (datetime, priceArea, price)
+                       INSERT OR REPLACE INTO spotPrices
+                       (datetime, priceArea, price)
                        VALUES (datetime(?), ?, ?);
                        ''', to_db)
     conn.commit()
     conn.close()
+
+
+def insertMfrrPriceData(file: str) -> None:
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    with open(file, 'r') as fin:
+        dr = csv.DictReader(fin, delimiter=';')
+        to_db = [(i['HourDK'], i['PriceArea'], i['mFRR_DownPurchased'], i['mFRR_DownPriceEUR'],
+                  i['mFRR_UpPurchased'], i['mFRR_UpPriceEUR']) for i in dr]
+
+    cursor.executemany('''
+                       INSERT OR REPLACE INTO mfrrPrices
+                       (datetime, priceArea, downPurchased,
+                        downPrice, upPurchased, upPrice)
+                       VALUES (datetime(?), ?, ?, ?, ?, ?);
+                       ''', to_db)
+    conn.commit()
+    conn.close()
+
+
+def fetchAllMfrrPrices() -> {}:
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("SELECT * FROM mfrrPrices;")
+        return cursor.fetchall()
+    except sqlite3.Error as e:
+        print(f"retrieval error: {e}")
+        return {}
+    finally:
+        conn.close()
 
 
 def fetchAllSpotPrices() -> {}:
