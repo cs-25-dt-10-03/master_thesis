@@ -1,6 +1,6 @@
 from typing import List
 from datetime import datetime, timedelta
-from classes.DFO import Point, DependencyPolygon, DFO
+from flexoffer_logic import DFO, DependencyPolygon, Point
 
 def find_or_interpolate_points(points: List[Point], dependency_value: float) -> List[Point]:
     """Finds or interpolates points for a given dependency value."""
@@ -71,11 +71,11 @@ def agg2to1(dfo1: DFO, dfo2: DFO, numsamples: int) -> DFO:
     """Aggregates two DFOs into one, handling misaligned start times by padding with temporary polygons."""
     
     # Determine the earliest start time
-    start_time = min(dfo1.earliest_start, dfo2.earliest_start)
+    start_time = min(datetime.fromtimestamp(dfo1.earliest_start), datetime.fromtimestamp(dfo2.earliest_start))
 
     # Compute how many padding polygons are needed at the start
-    pad_start_1 = int((dfo1.earliest_start - start_time).total_seconds() // 3600)
-    pad_start_2 = int((dfo2.earliest_start - start_time).total_seconds() // 3600)
+    pad_start_1 = int((datetime.fromtimestamp(dfo1.earliest_start) - start_time).total_seconds() // 3600)
+    pad_start_2 = int((datetime.fromtimestamp(dfo2.earliest_start) - start_time).total_seconds() // 3600)
 
     # Compute how many padding polygons are needed at the end
     max_length = max(len(dfo1.polygons) + pad_start_1, len(dfo2.polygons) + pad_start_2)
@@ -146,8 +146,9 @@ def agg2to1(dfo1: DFO, dfo2: DFO, numsamples: int) -> DFO:
         aggregated_polygons.append(aggregated_polygon)
 
     # Create the aggregated DFO, preserving the aligned start time
-    aggregated_dfo = DFO(-1, [0], [0], numsamples, earliest_start=start_time)
+    aggregated_dfo = DFO(-1, [0], [0], numsamples, earliest_start=int(start_time.timestamp()))
     aggregated_dfo.polygons = aggregated_polygons
+    print(f"agg2to1() -> Returning DFO, Type: {type(aggregated_dfo)}")
     return aggregated_dfo
 
 def aggnto1(dfos: List[DFO], numsamples: int) -> DFO:
