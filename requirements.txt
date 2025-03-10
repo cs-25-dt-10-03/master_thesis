@@ -7,3 +7,4 @@ scikit-learn
 np
 matplotlib
 pytest
+PyQt6

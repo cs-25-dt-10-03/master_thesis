@@ -4,6 +4,7 @@ from scipy.spatial import ConvexHull
 import numpy as np
 from typing import List, Optional
 
+
 class Point:
     def __init__(self, x: float, y: float):
         self.x = x  # Total energy from previous timesteps
@@ -11,6 +12,7 @@ class Point:
 
     def __repr__(self):
         return f"({self.x:.3g}, {self.y:.3g})"  # Three significant digits
+
 
 class DependencyPolygon:
     def __init__(self, min_prev: float, max_prev: float, numsamples: int):
@@ -22,14 +24,14 @@ class DependencyPolygon:
     def generate_polygon(self, charging_power: float, next_min_prev: float, next_max_prev: float):
         if self.min_prev_energy == self.max_prev_energy:
             min_current_energy = max(next_min_prev - self.min_prev_energy, 0.0)
-            min_current_energy = min(min_current_energy, charging_power) # Limit to charging power
+            min_current_energy = min(min_current_energy, charging_power)  # Limit to charging power
             max_current_energy = max(next_max_prev - self.min_prev_energy, 0.0)
-            max_current_energy = min(max_current_energy, charging_power) # Limit to charging power
-            
+            max_current_energy = min(max_current_energy, charging_power)  # Limit to charging power
+
             self.add_point(self.min_prev_energy, min_current_energy)
             self.add_point(self.max_prev_energy, max_current_energy)
             return
-        
+
         step = (self.max_prev_energy - self.min_prev_energy) / (self.numsamples - 1)
 
         for i in range(self.numsamples):
@@ -37,9 +39,9 @@ class DependencyPolygon:
 
             # Calculate the min and max energy needed for the next time slice
             min_current_energy = max(next_min_prev - current_prev_energy, 0.0)
-            min_current_energy = min(min_current_energy, charging_power) # Limit to charging power
+            min_current_energy = min(min_current_energy, charging_power)  # Limit to charging power
             max_current_energy = max(next_max_prev - current_prev_energy, 0.0)
-            max_current_energy = min(max_current_energy, charging_power) # Limit to charging power
+            max_current_energy = min(max_current_energy, charging_power)  # Limit to charging power
 
             # Add the points to the polygon
             self.add_point(current_prev_energy, min_current_energy)
@@ -62,19 +64,20 @@ class DependencyPolygon:
         for point in self.points:
             print(point)
 
-    def __repr__(self): #so print(polygon) can be used directly
+    def __repr__(self):  # so print(polygon) can be used directly
         points_str = "\n".join(map(str, self.points))
         return f"Polygon:\n{points_str}"
 
+
 class DFO:
     def __init__(
-        self, 
-        dfo_id: int, 
-        min_prev: List[float], 
-        max_prev: List[float], 
+        self,
+        dfo_id: int,
+        min_prev: List[float],
+        max_prev: List[float],
         numsamples: int = 5,
         charging_power: Optional[float] = None,
-        min_total_energy: Optional[float] = None, 
+        min_total_energy: Optional[float] = None,
         max_total_energy: Optional[float] = None,
         earliest_start: Optional[datetime] = None
     ):
@@ -84,29 +87,29 @@ class DFO:
         ]
 
         self.charging_power = charging_power if charging_power is not None else 7.3  # Default charging power
-        self.min_total_energy = min_total_energy if min_total_energy is not None else min_prev[-1] # Last element in min_prev
-        self.max_total_energy = max_total_energy if max_total_energy is not None else max_prev[-1] # Last element in max_prev
+        self.min_total_energy = min_total_energy if min_total_energy is not None else min_prev[-1]  # Last element in min_prev
+        self.max_total_energy = max_total_energy if max_total_energy is not None else max_prev[-1]  # Last element in max_prev
 
         self.earliest_start = earliest_start if earliest_start is not None else datetime.now()
         self.latest_start = self.earliest_start
-     
+
     def generate_dependency_polygons(self):
         for i in range(len(self.polygons)):
-            if i < len(self.polygons) - 1: # Generate allowed energy usage based on min/max dependency from the next timestep
+            if i < len(self.polygons) - 1:  # Generate allowed energy usage based on min/max dependency from the next timestep
                 self.polygons[i].generate_polygon(self.charging_power, self.polygons[i + 1].min_prev_energy, self.polygons[i + 1].max_prev_energy)
         self.polygons = self.polygons[:-1]  # Remove the last polygon, as it was only there such that the loop could generate the second-to-last polygon
-    
+
     def print_dfo(self):
         print(f"DFO ID: {self.dfo_id}")
         for i, polygon in enumerate(self.polygons):
             polygon.print_polygon(i)
-    
-    def __repr__(self): # so print(dfo) can be used directly
+
+    def __repr__(self):  # so print(dfo) can be used directly
         polygons_str = "\n".join(
             f"Polygon {i}:\n{polygon}" for i, polygon in enumerate(self.polygons)
         )
         return f"DFO ID: {self.dfo_id}\n{polygons_str}"
-    
+
     def plot_dfo(self):
         """Visualizes each dependency polygon in its own coordinate system."""
         num_polygons = len(self.polygons)
