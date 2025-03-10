@@ -3,6 +3,7 @@ openpyxl
 datetime
 pulp
 scipy
+scikit-learn
 np
 matplotlib
 pytest
