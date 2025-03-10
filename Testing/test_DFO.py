@@ -1,6 +1,5 @@
 import pytest
 from datetime import datetime, timedelta
-from classes.flexOffer import FlexOffer
 from classes.DFO import DFO
 from classes.electricVehicle import ElectricVehicle
 from aggregation.DFO_aggregation import agg2to1, aggnto1

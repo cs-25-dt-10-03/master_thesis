@@ -3,7 +3,6 @@ from typing import Optional, Tuple
 import numpy as np
 from helpers import dt_to_unix
 from scipy.stats import lognorm, beta
-from classes.flexOffer import FlexOffer
 from flexoffer_logic import Flexoffer, TimeSlice 
 from config import config
 from classes.DFO import DFO
@@ -54,7 +53,7 @@ class ElectricVehicle:
         return charging_window_start, charging_window_end
 
 
-    def create_flex_offer(self, tec_fo: bool = False) -> FlexOffer:
+    def create_flex_offer(self, tec_fo: bool = False) -> Flexoffer:
         earliest_start, end_time = self.sample_start_times()
 
         if tec_fo == True:

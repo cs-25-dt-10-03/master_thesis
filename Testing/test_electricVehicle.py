@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 import numpy as np
 from scipy.stats import beta, lognorm
 from classes.electricVehicle import ElectricVehicle
-from classes.flexOffer import FlexOffer
+from flexoffer_logic import Flexoffer
 from classes.DFO import DFO
 from config import config
 
@@ -29,8 +29,8 @@ def test_electric_vehicle_sample_start_times():
         charging_efficiency=0.95
     )
     start_time, end_time = ev.sample_start_times()
-    # The arrival (start) time should be before the departure (end) time.
     assert start_time < end_time
+
 
 def test_create_flex_offer():
     ev = ElectricVehicle(
@@ -42,9 +42,10 @@ def test_create_flex_offer():
         charging_efficiency=0.95
     )
     fo = ev.create_flex_offer(tec_fo=True)
-    assert isinstance(fo, FlexOffer)
-    assert len(fo.energy_profile) > 0
-    assert fo.min_energy is not None
+    assert isinstance(fo, Flexoffer)
+    assert len(fo.get_profile()) > 0
+    assert fo.get_min_overall_alloc() is not None
+
 
 def test_create_dfo():
     ev = ElectricVehicle(
@@ -70,6 +71,5 @@ def test_update_soc():
         charging_efficiency=0.95
     )
     initial_soc = ev.current_soc
-    ev.update_soc(10)  # Charge with 10 kWh
-    # The state of charge should increase.
+    ev.update_soc(10)
     assert ev.current_soc > initial_soc

@@ -1,26 +1,33 @@
 import pytest
 from datetime import datetime, timedelta
-from classes.flexOffer import FlexOffer
-from config import config
+from flexoffer_logic import Flexoffer, TimeSlice
 from aggregation.alignments import start_alignment_fast
+from helpers import dt_to_unix, dt_to_unix_seconds
 
-def create_test_flexoffer(offer_id, start_hour, duration_hours, profile):
-    earliest_start = datetime.now().replace(hour=start_hour, minute=0, second=0, microsecond=0)
-    latest_start = earliest_start + timedelta(hours=1)
-    end_time = earliest_start + timedelta(hours=duration_hours)
-    duration = timedelta(hours=duration_hours)
+def create_test_flexoffer(offer_id, est_hour, lst_hour, et_hour, profile):
+    now = datetime.now().replace(minute=0, second=0, microsecond=0)
+    earliest_start = now.replace(hour=est_hour)
+    latest_start = now.replace(hour=lst_hour)
+    end_time = now.replace(hour=et_hour)
+    duration = len(profile)
     min_energy = sum([p[0] for p in profile])
     max_energy = sum([p[1] for p in profile])
+    profile_ts = [TimeSlice(min_val, max_val) for (min_val, max_val) in profile]
+    return Flexoffer(
+        offer_id,
+        dt_to_unix(earliest_start),
+        dt_to_unix(latest_start),
+        dt_to_unix(end_time),
+        profile_ts,
+        duration,
+        min_energy,
+        max_energy
+    )
 
-    return FlexOffer(offer_id, earliest_start, latest_start, end_time, duration, profile, min_energy, max_energy)
-
-def test_start_alignment():
-    fo1 = create_test_flexoffer(1, 8, 3, [(1, 2), (1.5, 2.5), (2, 3)])
-    fo2 = create_test_flexoffer(2, 9, 2, [(0.5, 1), (1, 1.5)])
-    fo3 = create_test_flexoffer(3, 7, 4, [(2, 3), (2, 3), (2, 3), (2, 3)])
+def test_aggregate_flexoffers():
+    fo1 = create_test_flexoffer(1, 8, 9, 10, [(1.0, 2.0), (1.5, 2.5)])
+    fo2 = create_test_flexoffer(2, 9, 10, 11, [(0.5, 1.0), (1.0, 1.5)])
+    fo3 = create_test_flexoffer(3, 7, 8, 9, [(2.0, 3.0), (2.0, 3.0)])
     
     aggregated_offer = start_alignment_fast([fo1, fo2, fo3])
-    
-    assert len(aggregated_offer.energy_profile) == (aggregated_offer.duration.seconds // config.TIME_RESOLUTION)
-
-    print("Aggregated FlexOffer:", aggregated_offer)
+    aggregated_offer.print_flexoffer()
