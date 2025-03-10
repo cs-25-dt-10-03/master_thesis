@@ -11,7 +11,7 @@ from helpers import dt_to_unix
 
 def create_mock_flexoffer(offer_id, est_offset, lst_offset, duration, min_power, max_power):
     now = datetime.now()
-    est = int((now + timedelta(hours=est_offset)).timestamp())  # Convert to Unix time
+    est = int((now + timedelta(hours=est_offset)).timestamp())
     lst = int((now + timedelta(hours=lst_offset)).timestamp())  # Convert to Unix time
     end = int((now + timedelta(hours=lst_offset + duration)).timestamp())
 
@@ -39,11 +39,4 @@ def fos(request):
 
 
 def test_clustering(fos):
-    labels = cluster_flexoffers(fos, n_clusters=3)
-    visualize_clusters(fos, labels)
-
-    for fo, label in zip(fos, labels):
-        print(f"FlexOffer ID {fo.get_offer_id()} -> Cluster {label}")
-
-def test_flexoffer_dendrogram(fos):
-    plot_dendrogram(fos, 'complete')
+    clustered_fos = cluster_flexoffers(fos, n_clusters=3)

@@ -4,10 +4,9 @@ from sklearn.cluster import AgglomerativeClustering
 from sklearn.preprocessing import StandardScaler
 from datetime import datetime
 from typing import List
-import matplotlib.pyplot as plt
+from aggregation.alignments import start_alignment_fast
 from flexoffer_logic import Flexoffer
-
-
+import matplotlib.pyplot as plt
 
 def extract_features(flex_offers: List[Flexoffer]):
     features = []
@@ -22,13 +21,38 @@ def extract_features(flex_offers: List[Flexoffer]):
     
     return np.array(features)
 
-def cluster_flexoffers(flex_offers, n_clusters=3):
+
+def cluster_flexoffers(flex_offers: List[Flexoffer], n_clusters=3) -> dict[int, list]: #[cluster nummer, liste af fos]
     features = extract_features(flex_offers)
 
     clustering = AgglomerativeClustering(n_clusters=n_clusters, linkage='ward')
     labels = clustering.fit_predict(features)
 
-    return labels
+    clustered_flexoffers = {i: [] for i in range(n_clusters)}
+    for fo, label in zip(flex_offers, labels):
+        clustered_flexoffers[label].append(fo)
+
+    return clustered_flexoffers
+
+
+def aggregate_clusters(clustered_flexoffers):
+    aggregated_flexoffers = []
+
+    for cluster_id, flex_offer_group in clustered_flexoffers.items():
+        if len(flex_offer_group) > 1:
+            aggregated_flexoffer = start_alignment_fast(flex_offer_group)
+            aggregated_flexoffers.append(aggregated_flexoffer)
+        else:
+            aggregated_flexoffers.append(flex_offer_group[0])
+    return aggregated_flexoffers
+
+
+
+def cluster_and_aggregate_flexoffers(flex_offers: List[Flexoffer], n_clusters=3):
+    clustered_flexoffers = cluster_flexoffers(flex_offers, n_clusters=n_clusters)
+    return aggregate_clusters(clustered_flexoffers)
+
+
 
 def visualize_clusters(flex_offers, labels):
     features = extract_features(flex_offers)
@@ -41,14 +65,12 @@ def visualize_clusters(flex_offers, labels):
     plt.colorbar(label="Cluster ID")
     plt.show()
 
+
 def plot_dendrogram(flex_offers, method="ward"):
     
     features = extract_features(flex_offers)
 
-    scaler = StandardScaler()
-    normalized_features = scaler.fit_transform(features)
-
-    linkage_matrix = linkage(normalized_features, method=method)
+    linkage_matrix = linkage(features, method=method)
 
     plt.figure(figsize=(10, 5))
     dendrogram(linkage_matrix, labels=[fo.get_offer_id() for fo in flex_offers], leaf_rotation=90)
