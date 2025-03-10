@@ -4,3 +4,10 @@ To run:
 - 2. ```python3 main.py```
  
 # To-Do
+- Læg nyt data i database
+- Hook spotmarket op på nyt data
+- Skrive funktioner der henter data ud
+  - get_spot_price
+  - get_spot_prices
+  - samme funktioner til at hente ev_data
+
