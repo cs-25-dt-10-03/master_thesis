@@ -1,6 +1,8 @@
 import sqlite3
 import csv
 import os
+from datetime import datetime
+from typing import List
 
 DB_PATH = os.path.dirname(os.path.abspath(__file__))
 DB_NAME = os.path.join(DB_PATH, "data.db")
@@ -91,6 +93,46 @@ def fetchAllSpotPrices() -> {}:
         return cursor.fetchall()
     except sqlite3.Error as e:
         print(f"retrieval error: {e}")
+        return {}
+    finally:
+        conn.close()
+
+
+
+
+
+def fetchSpotPricesByDate(time: int) -> float:
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    try:
+        dt = datetime.fromtimestamp(time).strftime('%Y-%m-%d %H:00:00')
+        cursor.execute("SELECT price FROM spotPrices WHERE datetime = ?;", (dt,))
+        result = cursor.fetchall()
+        return result[0][0]
+    except sqlite3.Error as e:
+        print(f"retrieval error: {e}")
+        return {}
+    finally:
+        conn.close()
+
+
+def fetchSpotPricesInRange(start_time: int, end_time: int) -> List[float]:
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    try:
+        start_dt = datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:00:00')
+        end_dt = datetime.fromtimestamp(end_time).strftime('%Y-%m-%d %H:00:00')
+        cursor.execute("SELECT datetime, price FROM spotPrices WHERE datetime BETWEEN ? AND ?;", (start_dt, end_dt))
+        results = cursor.fetchall()
+
+        spotprices = [row[0] for row in results] 
+        
+        return spotprices
+
+    except sqlite3.Error as e:
+        print(f"Database retrieval error: {e}")
         return {}
     finally:
         conn.close()
