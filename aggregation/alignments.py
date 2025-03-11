@@ -30,6 +30,5 @@ def startAlignment(fos: List[Flexoffer]) -> Flexoffer:
 
 
 def start_alignment_fast(flex_offers: List[Flexoffer]) -> Flexoffer:
-    flexoffer_logic.set_time_resolution(config.TIME_RESOLUTION)
     afo = start_alignment_aggregate(flex_offers)
     return afo

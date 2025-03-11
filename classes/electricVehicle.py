@@ -46,10 +46,9 @@ class ElectricVehicle:
         if departure_hour < arrival_hour:
             charging_window_end += timedelta(days=1)
 
-        print(f"Arrival Time: {charging_window_start.strftime('%H:%M')}")
-        print(f"Departure Time: {charging_window_end.strftime('%H:%M')}")
-
         return charging_window_start, charging_window_end
+
+
 
     def create_flex_offer(self, tec_fo: bool = False) -> Flexoffer:
         earliest_start, end_time = self.sample_start_times()

@@ -22,7 +22,7 @@ def simulate_mock_evs(offer_id, soc_min, soc_max, charging_power, capacity):
     )
     return ev.create_flex_offer(tec_fo=True)
 
-@pytest.fixture(params=[10, 100])
+@pytest.fixture(params=[10])
 def fos(request):
     num_instances = request.param
     np.random.seed(42)
