@@ -3,9 +3,8 @@ from typing import Tuple
 import numpy as np
 from helpers import dt_to_unix
 from scipy.stats import lognorm, beta
-from flexoffer_logic import Flexoffer, TimeSlice
+from flexoffer_logic import Flexoffer, TimeSlice, DFO
 from config import config
-from classes.DFO import DFO
 
 
 class ElectricVehicle:
@@ -117,7 +116,11 @@ class ElectricVehicle:
             min_prev.append(max(additional_min - self.charging_power * i, 0))
             max_prev.append(min(self.charging_power * i, additional_max))
         min_prev.reverse()
-        dfo = DFO(self.vehicle_id, min_prev, max_prev, numsamples, self.charging_power, additional_min, additional_max, charging_window_start)
+
+        # Convert `charging_window_start` to integer Unix timestamp
+        earliest_start_timestamp = int(charging_window_start.timestamp())
+
+        dfo = DFO(self.vehicle_id, min_prev, max_prev, numsamples, self.charging_power, additional_min, additional_max, earliest_start_timestamp)
         dfo.generate_dependency_polygons()
         return dfo
 
