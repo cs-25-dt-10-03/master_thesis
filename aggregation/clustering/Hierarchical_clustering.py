@@ -3,53 +3,65 @@ from scipy.cluster.hierarchy import dendrogram, linkage
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.preprocessing import StandardScaler
 from datetime import datetime
+
 from typing import List
 from aggregation.alignments import start_alignment_fast
-from flexoffer_logic import Flexoffer
+from flexoffer_logic import Flexoffer, DFO, aggnto1
 import matplotlib.pyplot as plt
 
-def extract_features(flex_offers: List[Flexoffer]):
+def extract_features(offers: List[Flexoffer]):
     features = []
     
-    for fo in flex_offers:
-        est = fo.get_est_hour()
-        lst = fo.get_lst_hour()
-        time_flexibility = lst - est
-        total_energy = fo.get_total_energy()
-        
-        features.append([est, lst, time_flexibility, total_energy])
-    
-    return np.array(features)
+def extract_features(offer):
+    """
+    Extracts features for clustering from both FlexOffers and DFOs.
+    """
+    if isinstance(offer, Flexoffer):
+        return np.array([
+            offer.get_est_hour(),
+            offer.get_lst_hour(),
+            offer.get_min_overall_alloc(),
+        ])
+    elif isinstance(offer, DFO):
+        return np.array([
+            offer.get_est_hour(),
+            offer.get_lst_hour(),
+            offer.min_total_energy,
+        ])
+    else:
+        raise ValueError("Unknown offer type")
 
-
-def cluster_flexoffers(flex_offers: List[Flexoffer], n_clusters=3) -> dict[int, list]: #[cluster nummer, liste af fos]
-    features = extract_features(flex_offers)
+def cluster_offers(offers, n_clusters=3):
+    feature_vectors = np.array([extract_features(o) for o in offers])
 
     clustering = AgglomerativeClustering(n_clusters=n_clusters, linkage='ward')
-    labels = clustering.fit_predict(features)
+    labels = clustering.fit_predict(feature_vectors)
 
-    clustered_flexoffers = {i: [] for i in range(n_clusters)}
-    for fo, label in zip(flex_offers, labels):
-        clustered_flexoffers[label].append(fo)
+    # Group offers by their cluster
+    clustered_offers = {i: [] for i in range(n_clusters)}
+    for offer, cluster_id in zip(offers, labels):
+        clustered_offers[cluster_id].append(offer)
 
-    return clustered_flexoffers
-
-
-def aggregate_clusters(clustered_flexoffers):
-    aggregated_flexoffers = []
-
-    for cluster_id, flex_offer_group in clustered_flexoffers.items():
-        if len(flex_offer_group) > 1:
-            aggregated_flexoffer = start_alignment_fast(flex_offer_group)
-            aggregated_flexoffers.append(aggregated_flexoffer)
-        else:
-            aggregated_flexoffers.append(flex_offer_group[0])
-    return aggregated_flexoffers
+    return list(clustered_offers.values())
 
 
+def aggregate_clusters(clustered_offers):
+    aggregated_offers = []
+    
+    for cluster in clustered_offers:
+        flexoffers = [o for o in cluster if isinstance(o, Flexoffer)]
+        dfos = [o for o in cluster if isinstance(o, DFO)]
 
-def cluster_and_aggregate_flexoffers(flex_offers: List[Flexoffer], n_clusters=3):
-    clustered_flexoffers = cluster_flexoffers(flex_offers, n_clusters=n_clusters)
+        if flexoffers:
+            aggregated_offers.append(start_alignment_fast(flexoffers))
+        if dfos:
+            aggregated_offers.append(aggnto1(dfos, 5))
+
+    return aggregated_offers
+
+
+def cluster_and_aggregate_flexoffers(offers, n_clusters=3):
+    clustered_flexoffers = cluster_offers(offers, n_clusters=n_clusters)
     return aggregate_clusters(clustered_flexoffers)
 
 

@@ -39,7 +39,6 @@ def optimize(FO: Flexoffer) -> Flexoffer: #We just set the scheduled start and a
         model += total_alloc >= FO.get_min_overall_alloc()
         model += total_alloc <= FO.get_max_overall_alloc()
     
-
         # Solve the problem
     model.solve()
 
@@ -50,12 +49,9 @@ def optimize(FO: Flexoffer) -> Flexoffer: #We just set the scheduled start and a
             optimal_start_time = st
             break
 
-    print(f"optimal_start_time {optimal_start_time}")
-
     optimal_power_alloc = [p.varValue for p in power_alloc]
     FO.set_scheduled_allocation(optimal_power_alloc)
     FO.set_scheduled_start_time(optimal_start_time)
-
 
 
     return FO

@@ -3,13 +3,13 @@ import pytest
 from sklearn.cluster import AgglomerativeClustering
 from optimization.flexOfferOptimizer import optimize
 from sklearn.preprocessing import StandardScaler
-from aggregation.clustering.Hierarchical_clustering import extract_features, cluster_flexoffers, visualize_clusters, plot_dendrogram, aggregate_clusters
+from aggregation.clustering.Hierarchical_clustering import extract_features, cluster_offers, visualize_clusters, plot_dendrogram, aggregate_clusters
 from aggregation.alignments import start_alignment_fast
 from datetime import datetime, timedelta
 from typing import List
 from classes.electricVehicle import ElectricVehicle
 import matplotlib.pyplot
-from flexoffer_logic import Flexoffer, TimeSlice
+from flexoffer_logic import Flexoffer, TimeSlice, DFO
 from helpers import dt_to_unix
 
 def simulate_mock_evs(offer_id, soc_min, soc_max, charging_power, capacity):
@@ -42,14 +42,9 @@ def fos(request):
     return fos
 
 
-
-
-
-
 def test_cluster_and_aggregate_flexoffers(fos, n_clusters=3):
-    clustered_flexoffers = cluster_flexoffers(fos, n_clusters=n_clusters)
+    clustered_flexoffers = cluster_offers(fos, n_clusters=n_clusters)
     aggregated_offers = aggregate_clusters(clustered_flexoffers)
-
 
     print("\n=== Aggregated FlexOffers ===\n")
     for i, afo in enumerate(aggregated_offers):

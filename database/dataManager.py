@@ -99,8 +99,6 @@ def fetchAllSpotPrices() -> {}:
 
 
 
-
-
 def fetchSpotPricesByDate(time: int) -> float:
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()

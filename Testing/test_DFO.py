@@ -2,6 +2,7 @@ import pytest
 from datetime import datetime, timedelta
 from flexoffer_logic import DFO, DependencyPolygon, Point, agg2to1, aggnto1, disagg1to2, disagg1toN
 from classes.electricVehicle import ElectricVehicle
+from aggregation.clustering.Hierarchical_clustering import extract_features, cluster_offers
 
 @pytest.fixture
 def charging_window_start():
@@ -143,3 +144,6 @@ def test_disagg1to2_and_disagg1toN(ev1, ev2, ev3, charging_window_start, chargin
     assert len(y_refs) == len(dfos)
     for i, dfo in enumerate(dfos):
         assert len(y_refs[i]) >= len(dfo.polygons)
+
+    clustered_fos = cluster_offers(dfos, n_clusters=1)
+
