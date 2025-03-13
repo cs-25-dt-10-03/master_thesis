@@ -127,7 +127,7 @@ def fetchSpotPricesInRange(start_time: int, end_time: int) -> List[float]:
         cursor.execute("SELECT datetime, price FROM spotPrices WHERE datetime BETWEEN ? AND ?;", (start_dt, end_dt))
         results = cursor.fetchall()
 
-        spotprices = [row[0] for row in results] 
+        spotprices = [row[1] for row in results] 
         
         return spotprices
 

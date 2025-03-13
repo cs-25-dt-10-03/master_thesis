@@ -9,8 +9,8 @@ from flexoffer_logic import Flexoffer, TimeSlice
 
 def optimize(FO: Flexoffer) -> Flexoffer: #We just set the scheduled start and alloc
 
-    time_horizon = abs(FO.get_lst_hour() - FO.get_end_hour()) #int
-    spot_prices = fetchSpotPricesInRange(FO.get_est(), FO.get_end()) #List[float]
+    time_horizon = abs(FO.get_lst_hour() - FO.get_et_hour()) #int
+    spot_prices = fetchSpotPricesInRange(FO.get_est(), FO.get_et()) #List[float]
 
     #define model
     model = pulp.LpProblem("FlexOffer_Scheduling", pulp.LpMinimize)
@@ -27,10 +27,18 @@ def optimize(FO: Flexoffer) -> Flexoffer: #We just set the scheduled start and a
     # constraint - only 1 start time
     model += pulp.lpSum(start_vars[s] for s in FO.get_allowed_start_times()) == 1, "Select_One_Start_Time"
 
+
     # Constraints: Energy bounds
     for t in range(FO.get_duration()):
-        model += power_alloc[t] >= FO.get_profile.min_power()[t]
-        model += power_alloc[t] <= FO.get_profile.max_power()[t]
+        model += power_alloc[t] >= FO.get_profile()[t].min_power
+        model += power_alloc[t] <= FO.get_profile()[t].max_power
+
+    # Constraints: Tec total energy
+    total_alloc = sum(power_alloc)
+    if FO.get_min_overall_alloc() > 0:
+        model += total_alloc >= FO.get_min_overall_alloc()
+        model += total_alloc <= FO.get_max_overall_alloc()
+    
 
         # Solve the problem
     model.solve()
@@ -42,8 +50,12 @@ def optimize(FO: Flexoffer) -> Flexoffer: #We just set the scheduled start and a
             optimal_start_time = st
             break
 
-    optimal_power_alloc = [p.varValue for p in power_alloc]
+    print(f"optimal_start_time {optimal_start_time}")
 
-    
+    optimal_power_alloc = [p.varValue for p in power_alloc]
+    FO.set_scheduled_allocation(optimal_power_alloc)
+    FO.set_scheduled_start_time(optimal_start_time)
+
+
 
     return FO
