@@ -1,8 +1,7 @@
 import sqlite3
-import csv
+import pandas as pd
 import os
-from datetime import datetime
-from typing import List
+from typing import List, Any
 
 DB_PATH = os.path.dirname(os.path.abspath(__file__))
 DB_NAME = os.path.join(DB_PATH, "data.db")
@@ -12,125 +11,200 @@ def initializeDatabase():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
-    cursor.execute('''
-                   CREATE TABLE IF NOT EXISTS spotPrices(
-                       datetime TEXT PRIMARY KEY UNIQUE,
-                       priceArea TEXT NOT NULL,
-                       price REAL NOT NULL
-                       )
-                   ''')
+    cursor.executescript("""
+                         CREATE TABLE IF NOT EXISTS ev_models(
+                             model TEXT PRIMARY KEY UNIQUE,
+                             batteri_capacity REAL NOT NULL,
+                             milage REAL NOT NULL,
+                             charging_power REAL NOT NULL
+                             );
 
-    cursor.execute('''
-                   CREATE TABLE IF NOT EXISTS mfrrPrices(
-                       datetime TEXT PRIMARY KEY UNIQUE,
-                       priceArea TEXT NOT NULL,
-                       downPurchased REAL NOT NULL,
-                       downPrice REAL NOT NULL,
-                       upPurchased REAL NOT NULL,
-                       upPrice REAL NOT NULL
-                       )
+                         CREATE TABLE IF NOT EXISTS economy(
+                             passed_hours REAL PRIMARY KEY UNIQUE,
+                             timestamp TEXT NOT NULL,
+                             year REAL NOT NULL,
+                             dso_earning REAL NOT NULL,
+                             chargeing_box_supplier_earnings REAL NOT NULL
+                             );
 
-                   ''')
+                         CREATE TABLE IF NOT EXISTS electricity_prices(
+                             passed_hours REAL PRIMARY KEY UNIQUE,
+                             timestamp TEXT NOT NULL,
+                             year REAL NOT NULL,
+                             month REAL NOT NULL,
+                             day REAL NOT NULL,
+                             hour REAL NOT NULL,
+                             minute REAL NOT NULL,
+                             spotPrice REAL NOT NULL,
+                             tso_tariff REAL NOT NULL,
+                             dso_tariff REAL NOT NULL,
+                             co2_emmision REAL NOT NULL
+                             );
+
+                         CREATE TABLE IF NOT EXISTS timestamps (
+                             id INTEGER PRIMARY KEY AUTOINCREMENT,
+                             timestamp DATETIME,
+                             year REAL,
+                             month REAL,
+                             day REAL,
+                             hour REAL,
+                             minute REAL
+                             );
+
+                         CREATE TABLE IF NOT EXISTS households (
+                             id INTEGER PRIMARY KEY AUTOINCREMENT,
+                             household_name TEXT UNIQUE
+                             );
+
+                         CREATE TABLE IF NOT EXISTS ev_readings (
+                             id INTEGER PRIMARY KEY AUTOINCREMENT,
+                             timestamp_id INTEGER,
+                             household_id INTEGER,
+                             ev_data REAL,
+                             FOREIGN KEY (timestamp_id) REFERENCES timestamps(id),
+                             FOREIGN KEY (household_id) REFERENCES households(id)
+                             );
+
+                         CREATE TABLE IF NOT EXISTS measurements(
+                             passed_hours REAL PRIMARY KEY UNIQUE,
+                             timestamp TEXT NOT NULL,
+                             year REAL NOT NULL,
+                             month REAL NOT NULL,
+                             day REAL NOT NULL,
+                             hour REAL NOT NULL,
+                             minute REAL NOT NULL,
+                             Total_num_of_evs REAL NOT NULL,
+                             number_of_charging_evs REAL NOT NULL,
+                             number_of_driving_evs  REAL NOT NULL,
+                             total_grid_load REAL NOT NULL,
+                             aggregated_base_load REAL NOT NULL,
+                             aggregated_charging_load REAL NOT NULL,
+                             overload_duration REAL NOT NULL
+                             );
+                         """)
     conn.commit()
     conn.close()
     print("Tables initialized.")
 
 
-def insertSpotPriceData(file: str) -> None:
+def insertSimpleData(file: str, table: str) -> None:
     conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    with open(file, 'r') as fin:
-        dr = csv.DictReader(fin)
-        to_db = [(i['HourDK'], i['PriceArea'], i['SpotPriceEUR']) for i in dr]
 
-    cursor.executemany('''
-                       INSERT OR REPLACE INTO spotPrices
-                       (datetime, priceArea, price)
-                       VALUES (datetime(?), ?, ?);
-                       ''', to_db)
+    df = pd.read_csv(file, skiprows=1)
+    df.to_sql(table, conn, if_exists='replace', index=False)
+
     conn.commit()
     conn.close()
 
 
-def insertMfrrPriceData(file: str) -> None:
+def insertHouseholdData(file: str) -> None:
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    with open(file, 'r') as fin:
-        dr = csv.DictReader(fin, delimiter=';')
-        to_db = [(i['HourDK'], i['PriceArea'], i['mFRR_DownPurchased'], i['mFRR_DownPriceEUR'],
-                  i['mFRR_UpPurchased'], i['mFRR_UpPriceEUR']) for i in dr]
 
-    cursor.executemany('''
-                       INSERT OR REPLACE INTO mfrrPrices
-                       (datetime, priceArea, downPurchased,
-                        downPrice, upPurchased, upPrice)
-                       VALUES (datetime(?), ?, ?, ?, ?, ?);
-                       ''', to_db)
+    names = pd.read_csv(file, dtype="unicode").iloc[0]
+
+    df = pd.read_csv(file, skiprows=1, dtype="unicode")
+
+    time_cols = ['Timestamp', 'Year', 'Month', 'Day', 'Hour', 'Minute']
+
+    time_df = df[time_cols].drop_duplicates()
+    for _, row in time_df.iterrows():
+        cursor.execute(
+            "INSERT INTO timestamps (timestamp, year, month, day, hour, minute) VALUES (?, ?, ?, ?, ?, ?)",
+            (row['Timestamp'], row['Year'], row['Month'], row['Day'], row['Hour'], row['Minute'])
+        )
+
+    for household in names:
+        cursor.execute(
+            "INSERT OR REPLACE INTO households (household_name) VALUES (?)",
+            (household,)
+        )
+    data = []
+    r = len(df)
+    for i, row in df.iterrows():
+        print(i, "/", r)
+        timestamp = row['Timestamp']
+        cursor.execute("SELECT id FROM timestamps WHERE timestamp = ?", (timestamp,))
+        timestamp_id = cursor.fetchone()[0]
+
+        for household in names:
+            cursor.execute("SELECT id FROM households WHERE household_name = ?", (household,))
+            household_id = cursor.fetchone()[0]
+            data.append((timestamp_id, household_id, row[household]))
+
+    cursor.executemany("INSERT INTO ev_readings (timestamp_id, household_id, ev_data) VALUES (?, ?, ?)", data)
+
     conn.commit()
     conn.close()
 
 
-def fetchAllMfrrPrices() -> {}:
+def fetchAllEvModels() -> List[Any]:
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT * FROM mfrrPrices;")
+        cursor.execute("SELECT * FROM ev_models;")
         return cursor.fetchall()
     except sqlite3.Error as e:
         print(f"retrieval error: {e}")
-        return {}
+        return []
     finally:
         conn.close()
 
 
-def fetchAllSpotPrices() -> {}:
+def fetchAllEconomy() -> List[Any]:
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT * FROM spotPrices;")
+        cursor.execute("SELECT * FROM economy;")
         return cursor.fetchall()
     except sqlite3.Error as e:
         print(f"retrieval error: {e}")
-        return {}
+        return []
     finally:
         conn.close()
 
 
-
-def fetchSpotPricesByDate(time: int) -> float:
+def fetchAllElectricityPrices() -> List[Any]:
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
     try:
-        dt = datetime.fromtimestamp(time).strftime('%Y-%m-%d %H:00:00')
-        cursor.execute("SELECT price FROM spotPrices WHERE datetime = ?;", (dt,))
-        result = cursor.fetchall()
-        return result[0][0]
+        cursor.execute("SELECT * FROM electricity_prices;")
+        return cursor.fetchall()
     except sqlite3.Error as e:
         print(f"retrieval error: {e}")
-        return {}
+        return []
     finally:
         conn.close()
 
 
-def fetchSpotPricesInRange(start_time: int, end_time: int) -> List[float]:
+def fetchAllMeasurements() -> List[Any]:
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
     try:
-        start_dt = datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:00:00')
-        end_dt = datetime.fromtimestamp(end_time).strftime('%Y-%m-%d %H:00:00')
-        cursor.execute("SELECT datetime, price FROM spotPrices WHERE datetime BETWEEN ? AND ?;", (start_dt, end_dt))
-        results = cursor.fetchall()
-
-        spotprices = [row[1] for row in results] 
-        
-        return spotprices
-
+        cursor.execute("SELECT * FROM measurements;")
+        return cursor.fetchall()
     except sqlite3.Error as e:
-        print(f"Database retrieval error: {e}")
-        return {}
+        print(f"retrieval error: {e}")
+        return []
     finally:
         conn.close()
+
+
+def fetchAllHouseholdData():
+    conn = sqlite3.connect(DB_NAME)
+    query = """
+                SELECT t.timestamp, h.household_name, e.ev_data
+                FROM ev_readings e
+                JOIN timestamps t ON e.timestamp_id = t.id
+                JOIN households h ON e.household_id = h.id
+                ORDER BY t.timestamp, h.household_name
+                LIMIT 10;
+            """
+
+    df = pd.read_sql_query(query, conn)
+    conn.close()
+    return df
