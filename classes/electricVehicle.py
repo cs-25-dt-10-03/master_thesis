@@ -60,7 +60,6 @@ class ElectricVehicle:
         else:
             charging_time_hours = 0
 
-        # Round charging time to the nearest valid time slot
         time_slot_resolution = config.TIME_RESOLUTION / 3600  # Convert resolution from seconds to hours
         charging_time_hours = round(charging_time_hours / time_slot_resolution) * time_slot_resolution
 
@@ -97,7 +96,7 @@ class ElectricVehicle:
             max_overall_alloc=max_energy
         )
 
-    def create_dfo(self, charging_window_start: datetime, charging_window_end: datetime, duration, numsamples) -> DFO:
+    def create_dfo(self, charging_window_start: datetime, duration, numsamples) -> DFO:
 
         time_slot_resolution = timedelta(seconds=config.TIME_RESOLUTION)
 
@@ -122,6 +121,7 @@ class ElectricVehicle:
 
         dfo = DFO(self.vehicle_id, min_prev, max_prev, numsamples, self.charging_power, additional_min, additional_max, earliest_start_timestamp)
         dfo.generate_dependency_polygons()
+        dfo.calculate_latest_start_time()
         return dfo
 
     def update_soc(self, charged_energy):

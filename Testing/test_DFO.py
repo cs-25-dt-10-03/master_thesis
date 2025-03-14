@@ -2,15 +2,11 @@ import pytest
 from datetime import datetime, timedelta
 from flexoffer_logic import DFO, DependencyPolygon, Point, agg2to1, aggnto1, disagg1to2, disagg1toN
 from classes.electricVehicle import ElectricVehicle
-from aggregation.clustering.Hierarchical_clustering import extract_features, cluster_offers
+from aggregation.clustering.Hierarchical_clustering import extract_features, cluster_offers, cluster_and_aggregate_flexoffers
 
 @pytest.fixture
 def charging_window_start():
     return datetime.now().replace(hour=22, minute=0, second=0, microsecond=0)
-
-@pytest.fixture
-def charging_window_end(charging_window_start):
-    return charging_window_start + timedelta(hours=8)
 
 @pytest.fixture
 def duration():
@@ -49,7 +45,8 @@ def ev3():
         charging_efficiency=0.84,
     )
 
-def test_create_dfos(charging_window_start, charging_window_end, duration):
+
+def test_create_dfos(charging_window_start, duration):
     """Tests creation of DFOs and aggregation using the C++ backend."""
     min_prev1 = [0, 5, 10]
     max_prev1 = [7, 12, 17]
@@ -116,13 +113,13 @@ def test_agg2to1_and_aggnto1():
     assert len(aggregated_dfo_multi.polygons) > 0
 
 
-def test_disagg1to2_and_disagg1toN(ev1, ev2, ev3, charging_window_start, charging_window_end, duration):
+def test_disagg1to2_and_disagg1toN(ev1, ev2, ev3, charging_window_start, duration):
     """Tests disaggregation functions disagg1to2 and disagg1toN using the C++ backend."""
 
     # Create DFOs from EVs, each with 3 time steps, but offset compared to one another
-    dfo1 = ev1.create_dfo(charging_window_start, charging_window_end, duration, numsamples=4)
-    dfo2 = ev2.create_dfo(charging_window_start + timedelta(hours=1), charging_window_end, duration, numsamples=4)
-    dfo3 = ev3.create_dfo(charging_window_start + timedelta(hours=2), charging_window_end, duration, numsamples=4)
+    dfo1 = ev1.create_dfo(charging_window_start, duration, numsamples=4)
+    dfo2 = ev2.create_dfo(charging_window_start + timedelta(hours=1), duration, numsamples=4)
+    dfo3 = ev3.create_dfo(charging_window_start + timedelta(hours=2), duration, numsamples=4)
 
     print(dfo1)
     print(dfo2)
@@ -145,5 +142,6 @@ def test_disagg1to2_and_disagg1toN(ev1, ev2, ev3, charging_window_start, chargin
     for i, dfo in enumerate(dfos):
         assert len(y_refs[i]) >= len(dfo.polygons)
 
-    clustered_fos = cluster_offers(dfos, n_clusters=1)
+    DFOs = cluster_and_aggregate_flexoffers(dfos, n_clusters=2)
 
+    print(DFOs)

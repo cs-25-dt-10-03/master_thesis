@@ -3,19 +3,13 @@ from scipy.cluster.hierarchy import dendrogram, linkage
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.preprocessing import StandardScaler
 from datetime import datetime
-
+from aggregation.clustering.metrics import evaluate_clustering
 from typing import List
 from aggregation.alignments import start_alignment_fast
 from flexoffer_logic import Flexoffer, DFO, aggnto1
 import matplotlib.pyplot as plt
 
-def extract_features(offers: List[Flexoffer]):
-    features = []
-    
 def extract_features(offer):
-    """
-    Extracts features for clustering from both FlexOffers and DFOs.
-    """
     if isinstance(offer, Flexoffer):
         return np.array([
             offer.get_est_hour(),
@@ -42,7 +36,7 @@ def cluster_offers(offers, n_clusters=3):
     for offer, cluster_id in zip(offers, labels):
         clustered_offers[cluster_id].append(offer)
 
-    return list(clustered_offers.values())
+    return list(clustered_offers.values()), labels
 
 
 def aggregate_clusters(clustered_offers):
@@ -55,16 +49,23 @@ def aggregate_clusters(clustered_offers):
         if flexoffers:
             aggregated_offers.append(start_alignment_fast(flexoffers))
         if dfos:
-            aggregated_offers.append(aggnto1(dfos, 5))
+            aggregated_offers.append(aggnto1(dfos, 4))
 
     return aggregated_offers
 
 
 def cluster_and_aggregate_flexoffers(offers, n_clusters=3):
-    clustered_flexoffers = cluster_offers(offers, n_clusters=n_clusters)
+    clustered_flexoffers, labels = cluster_offers(offers, n_clusters=n_clusters)
+
+    # Compute clustering quality metrics
+    evaluation = evaluate_clustering(offers, labels)
+    
+    print("\n===== Clustering Quality Metrics =====")
+    print(f"Silhouette Score: {evaluation['Silhouette Score']:.3f}" if evaluation['Silhouette Score'] is not None else "Silhouette Score: N/A (only 1 cluster)")
+    print(f"Davies-Bouldin Index: {evaluation['Davies-Bouldin Index']:.3f}" if evaluation['Davies-Bouldin Index'] is not None else "Davies-Bouldin Index: N/A (only 1 cluster)")
+    print("======================================")
+
     return aggregate_clusters(clustered_flexoffers)
-
-
 
 def visualize_clusters(flex_offers, labels):
     features = extract_features(flex_offers)

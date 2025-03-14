@@ -2,7 +2,8 @@ import numpy as np
 import pytest
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.preprocessing import StandardScaler
-from aggregation.clustering.Hierarchical_clustering import extract_features, cluster_flexoffers, visualize_clusters, plot_dendrogram
+from aggregation.clustering.Hierarchical_clustering import extract_features, cluster_offers, cluster_and_aggregate_flexoffers, visualize_clusters, plot_dendrogram
+from aggregation.clustering.metrics import evaluate_clustering
 from datetime import datetime, timedelta
 from typing import List
 import matplotlib.pyplot
@@ -18,7 +19,7 @@ def create_mock_flexoffer(offer_id, est_offset, lst_offset, duration, min_power,
     profile = [TimeSlice(min_power, max_power) for _ in range(duration)]
     return Flexoffer(offer_id, est, lst, end, profile, duration)
 
-@pytest.fixture(params=[10, 100])
+@pytest.fixture(params=[10, 100, 1000])
 def fos(request):
     num_instances = request.param
     np.random.seed(42)
@@ -39,4 +40,4 @@ def fos(request):
 
 
 def test_clustering(fos):
-    clustered_fos = cluster_flexoffers(fos, n_clusters=3)
+    clustered_fos = cluster_and_aggregate_flexoffers(fos, n_clusters=3)
