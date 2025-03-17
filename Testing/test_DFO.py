@@ -1,7 +1,8 @@
 import pytest
 from datetime import datetime, timedelta
-from flexoffer_logic import DFO, DependencyPolygon, Point, agg2to1, aggnto1, disagg1to2, disagg1toN
+from flexoffer_logic import DFO, DependencyPolygon, Point, agg2to1, aggnto1, disagg1to2, disagg1toN, findOrInterpolatePoints
 from classes.electricVehicle import ElectricVehicle
+from optimization.DFOOptimizer import DFO_Optimization
 from aggregation.clustering.Hierarchical_clustering import extract_features, cluster_offers, cluster_and_aggregate_flexoffers
 
 @pytest.fixture
@@ -39,7 +40,7 @@ def ev3():
     return ElectricVehicle(
         vehicle_id=3,
         capacity=100.0,
-        soc_min=0.40,
+        soc_min=0.70,
         soc_max=0.80,
         charging_power=10.0,
         charging_efficiency=0.84,
@@ -145,3 +146,30 @@ def test_disagg1to2_and_disagg1toN(ev1, ev2, ev3, charging_window_start, duratio
     DFOs = cluster_and_aggregate_flexoffers(dfos, n_clusters=2)
 
     print(DFOs)
+
+def test_DFO_Optimization(ev3, charging_window_start, duration):
+    """Tests DFO optimization function with a simple cost structure."""
+    cost_per_unit = [0.15, 0.20, 0.18]  # Example spot prices per timestep
+
+    dfo1 = ev3.create_dfo(charging_window_start, duration, numsamples=4)
+
+    # Ensure the cost array length matches the number of polygons
+    assert len(cost_per_unit) == len(dfo1.polygons)
+
+    # Run optimization
+    optimized_schedule = DFO_Optimization(dfo1, cost_per_unit)
+
+    # Assertions: Check that optimization produces valid results
+    assert isinstance(optimized_schedule, list)
+    assert len(optimized_schedule) == len(dfo1.polygons)
+
+    # Ensure the optimized energy values are within the allowed range of the DFO
+    dependency = 0.0
+    for t, energy in enumerate(optimized_schedule):
+        dependency += energy
+        MinMaxPoints = findOrInterpolatePoints(dfo1.polygons[t].points, dependency)
+        assert MinMaxPoints[0].y <= energy <= MinMaxPoints[1].y, \
+            f"Energy {energy} at timestep {t} is out of bounds!"
+
+    print("Optimized Schedule:", optimized_schedule)
+    print(dfo1)
