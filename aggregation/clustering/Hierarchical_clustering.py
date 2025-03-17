@@ -5,6 +5,7 @@ from sklearn.preprocessing import StandardScaler
 from datetime import datetime
 from aggregation.clustering.metrics import evaluate_clustering
 from typing import List
+from config import config
 from aggregation.alignments import start_alignment_fast
 from flexoffer_logic import Flexoffer, DFO, aggnto1
 import matplotlib.pyplot as plt
@@ -47,12 +48,25 @@ def aggregate_clusters(clustered_offers):
         dfos = [o for o in cluster if isinstance(o, DFO)]
 
         if flexoffers:
-            aggregated_offers.append(start_alignment_fast(flexoffers))
+            afo = start_alignment_fast(flexoffers)
+            if meets_market_compliance(afo):
+                aggregated_offers.append(afo)
+            else:
+                aggregated_offers.append(afo)
+                print(f"⚠️ Warning: Cluster did not meet market compliance. Adjusting...")
         if dfos:
-            aggregated_offers.append(aggnto1(dfos, 4))
-
+            afo = aggnto1(dfos, 4)
+            if meets_market_compliance(afo):
+                aggregated_offers.append(afo)
+            else:
+                aggregated_offers.append(afo)
+                print(f"⚠️ Warning: Cluster did not meet market compliance. Adjusting...")
     return aggregated_offers
 
+def meets_market_compliance(offer: Flexoffer) -> bool:
+    if offer.get_min_overall_alloc() < config.MIN_BID_SIZE:
+        return True
+    return False
 
 def cluster_and_aggregate_flexoffers(offers, n_clusters=3):
     clustered_flexoffers, labels = cluster_offers(offers, n_clusters=n_clusters)
@@ -82,7 +96,6 @@ def visualize_clusters(flex_offers, labels):
 def plot_dendrogram(flex_offers, method="ward"):
     
     features = extract_features(flex_offers)
-
     linkage_matrix = linkage(features, method=method)
 
     plt.figure(figsize=(10, 5))
@@ -91,3 +104,16 @@ def plot_dendrogram(flex_offers, method="ward"):
     plt.ylabel("Cluster Distance")
     plt.title("Hierarchical Clustering Dendrogram")
     plt.show()
+
+
+def needed_for_compliance(offer):
+    if offer.get_total_energy() < config.MIN_BID_SIZE:
+        additional_energy_needed = config.MIN_BID_SIZE - offer.get_min_overall_alloc()
+        print(additional_energy_needed)
+    if market_config["require_uniform_energy"]:
+        avg_energy = sum(offer.get_scheduled_allocation()) / offer.get_duration()
+        offer.set_scheduled_allocation([avg_energy] * offer.get_duration())
+    if market_config["market_time_unit"] == "15min" and offer.get_duration() % 4 != 0:
+        new_duration = (offer.get_duration() // 4) * 4
+        offer.set_scheduled_allocation(offer.get_scheduled_allocation()[:new_duration])
+    return offer
