@@ -1,14 +1,15 @@
 import json
 import os
-from datetime import timedelta
 import flexoffer_logic
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
+
 
 def load_config():
     flexoffer_logic.reload_config()  # Loads config into c++
     with open(CONFIG_PATH, "r") as file:
         return json.load(file)
+
 
 class config:
     _config_data = load_config()
@@ -22,3 +23,6 @@ class config:
     TIME_RESOLUTION = _config_data.get("TIME_RESOLUTION", 3600)
     MIN_BID_SIZE = _config_data.get("MIN_BID_SIZE", 100)
     REQUIRE_UNIFORM = _config_data.get("REQUIRE_UNIFORM", 0)
+    MIN_BID_SIZE = _config_data.get("MIN_BID_SIZE", 1000)
+    
+    DATA_FILEPATH = os.path.join("..", "SmartCharging_2020_to_2032")

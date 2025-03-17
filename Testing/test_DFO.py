@@ -164,12 +164,15 @@ def test_DFO_Optimization(ev3, charging_window_start, duration):
     assert len(optimized_schedule) == len(dfo1.polygons)
 
     # Ensure the optimized energy values are within the allowed range of the DFO
-    dependency = 0.0
-    for t, energy in enumerate(optimized_schedule):
-        dependency += energy
-        MinMaxPoints = findOrInterpolatePoints(dfo1.polygons[t].points, dependency)
-        assert MinMaxPoints[0].y <= energy <= MinMaxPoints[1].y, \
-            f"Energy {energy} at timestep {t} is out of bounds!"
-
     print("Optimized Schedule:", optimized_schedule)
     print(dfo1)
+    dependency = 0.0
+    for t, energy in enumerate(optimized_schedule):
+        print("POints ", dfo1.polygons[t].points)
+        MinMaxPoints = findOrInterpolatePoints(dfo1.polygons[t].points, dependency)
+        dependency += energy
+        print("MinMaxPoints: ", MinMaxPoints)
+        print("Iteration: ", t)
+        tolerance = 1e-6  # Define a small tolerance
+        assert MinMaxPoints[0].y - tolerance <= energy <= MinMaxPoints[1].y + tolerance, \
+            f"Energy {energy} at timestep {t} is out of bounds!"

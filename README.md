@@ -9,5 +9,4 @@ To run:
 - Skrive funktioner der henter data ud
   - get_spot_price
   - get_spot_prices
-  - samme funktioner til at hente ev_data
 
