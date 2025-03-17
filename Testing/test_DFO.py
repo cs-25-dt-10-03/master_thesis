@@ -40,7 +40,7 @@ def ev3():
     return ElectricVehicle(
         vehicle_id=3,
         capacity=100.0,
-        soc_min=0.70,
+        soc_min=0.40,
         soc_max=0.80,
         charging_power=10.0,
         charging_efficiency=0.84,
