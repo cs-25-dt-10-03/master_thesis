@@ -17,3 +17,4 @@ class config:
     SIMULATION_DAYS = _config_data.get("SIMULATION_DAYS", 30)
     SIMULATION_START_DATE = _config_data.get("SIMULATION_START_DATE", "2025-03-01")
     TIME_RESOLUTION = _config_data.get("TIME_RESOLUTION", 3600)
+    MIN_BID_SIZE = _config_data.get("MIN_BID_SIZE", 1000)
