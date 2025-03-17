@@ -27,7 +27,7 @@ class ElectricVehicle:
     def sample_soc(self) -> float:
         alpha, beta_param = 2, 5
         sampled_soc = beta.rvs(alpha, beta_param)
-        return self.soc_min + (self.soc_max - self.soc_min) * sampled_soc
+        return sampled_soc
 
     def sample_start_times(self) -> Tuple[datetime, datetime]:
         arrival_mu = np.log(18)
