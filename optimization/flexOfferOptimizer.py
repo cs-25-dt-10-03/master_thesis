@@ -7,7 +7,7 @@ import pulp
 from config import config
 from flexoffer_logic import Flexoffer, TimeSlice
 
-def optimize(FO: Flexoffer) -> Flexoffer: #We just set the scheduled start and alloc
+def optimize(FO: Flexoffer) -> Flexoffer:
 
     time_horizon = abs(FO.get_lst_hour() - FO.get_et_hour()) #int
     spot_prices = fetchSpotPricesInRange(FO.get_est(), FO.get_et()) #List[float]
