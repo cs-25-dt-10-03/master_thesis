@@ -1,6 +1,18 @@
 from pulp import LpProblem, LpMinimize, LpVariable, lpSum, LpAffineExpression
 from typing import List
+from database.dataManager import get_price_at_datetime 
+from config import config
 from flexoffer_logic import DFO, findOrInterpolatePoints, DependencyPolygon, Point
+
+def get_cost_array_for_dfo(dfo) -> list[float]:
+    num_timesteps = len(dfo.polygons)
+    cost_array = []
+    for t in range(num_timesteps):
+        step_timestamp = dfo.earliest_start + t * config.TIME_RESOLUTION
+        price = get_price_at_datetime(step_timestamp)
+        cost_array.append(price)
+    return cost_array
+
 
 def add_interpolation_constraints(model, energy_var, cumulative_energy_var, points):
     """Applies linear interpolation constraints based on dependency values in a polygon."""
@@ -36,6 +48,8 @@ def DFO_Optimization(dfo: DFO, cost_per_unit: list) -> list:
     num_timesteps = len(dfo.polygons)
     if num_timesteps != len(cost_per_unit):
         raise ValueError("Mismatch between DFO timesteps and cost_per_unit size.")
+
+    cost_per_unit = get_cost_array_for_dfo(dfo)
 
     # Define LP problem
     model = LpProblem("DFO_Optimization", LpMinimize)

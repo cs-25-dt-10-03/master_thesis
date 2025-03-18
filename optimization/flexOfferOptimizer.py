@@ -1,7 +1,7 @@
 from pulp import LpProblem, LpMinimize, LpVariable, lpSum
 from datetime import datetime, timedelta
 from typing import List
-from database.dataManager import fetchSpotPricesByDate, fetchSpotPricesInRange
+from database.dataManager import get_price_at_datetime, get_prices_in_range
 import pandas as pd
 import pulp
 from config import config
@@ -10,7 +10,7 @@ from flexoffer_logic import Flexoffer, TimeSlice
 def optimize(FO: Flexoffer) -> Flexoffer:
 
     time_horizon = abs(FO.get_lst_hour() - FO.get_et_hour()) #int
-    spot_prices = fetchSpotPricesInRange(FO.get_est(), FO.get_et()) #List[float]
+    spot_prices = get_prices_in_range(FO.get_est(), FO.get_et()) #List[float]
 
     #define model
     model = pulp.LpProblem("FlexOffer_Scheduling", pulp.LpMinimize)

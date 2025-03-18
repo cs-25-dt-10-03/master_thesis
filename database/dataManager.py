@@ -1,6 +1,7 @@
 import pandas as pd
 from typing import List
 import os
+from datetime import datetime
 from config import config
 
 
@@ -28,25 +29,48 @@ def fetchEvData() -> pd.core.frame.DataFrame:
 
     return dfs
 
+def load_data():
+    df = pd.read_csv(os.path.join(config.DATA_FILEPATH, "Electricity prices.csv"), dtype="unicode", delimiter=",", skiprows=0)
+    df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce').dt.round("h")
+    return df
+
 def get_price_at_datetime(datetime_value):
+    df = load_data()
     datetime_value = pd.to_datetime(datetime_value, unit="s")
-    df = pd.read_csv(os.path.join(os.path.dirname(__file__), "Electricity_prices.csv"), delimiter=",")
-    df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce')
     row = df.loc[df['Timestamp'] == datetime_value]
-    
     if not row.empty:
-        return row['Timestamp'].values[0]
+        return float(row['Spot Price [DKK/kWh]'].values[0])
     return None
 
-
 def get_prices_in_range(start_timestamp, end_timestamp):
-    file_path = os.path.join(os.path.dirname(__file__), "Electricity_prices.csv")
+    df = load_data()
+    start_datetime = pd.to_datetime(start_timestamp, unit="s")
+    end_datetime = pd.to_datetime(end_timestamp, unit="s")
+    mask = (df['Timestamp'] >= start_datetime) & (df['Timestamp'] <= end_datetime)
+    
+    return df.loc[mask, 'Spot Price [DKK/kWh]'].astype(float).tolist()
 
-    # Load CSV properly
-    df = pd.read_csv(file_path, delimiter=",")
-    df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce')
-    mask = (df['Timestamp'] >= pd.to_datetime(start_timestamp)) & (df['Timestamp'] <= pd.to_datetime(end_timestamp))
 
 
-    return df.loc[mask, ['Timestamp', 'Spot Price [DKK/kWh]']]
+def fetch_mFRR_by_date(target_date):
+    df = pd.read_csv(os.path.join(config.DATA_FILEPATH, "mFRR.csv"), delimiter=";")
+    df["HourDK"] = pd.to_datetime(df["HourDK"], errors="coerce")
 
+    target_date = pd.to_datetime(target_date, unit="s")
+    corresponding_row = df[df["HourDK"] == target_date]
+
+    print(f"target date {target_date}")
+    print(f"df selected date {corresponding_row}")
+
+    return corresponding_row
+
+
+def fetch_mFRR_by_range(start_date, end_date):
+    df = pd.read_csv(os.path.join(config.DATA_FILEPATH, "mFRR.csv"), delimiter=";")
+    df["HourDK"] = pd.to_datetime(df["HourDK"], errors="coerce")
+    start_date = pd.to_datetime(start_date, unit="s")
+    end_date = pd.to_datetime(end_date, unit="s")
+
+    mask = (df["HourDK"] >= start_date) & (df["HourDK"] <= end_date)
+    df_filtered = df[mask]
+    return df_filtered

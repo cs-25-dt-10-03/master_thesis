@@ -56,11 +56,7 @@ def aggregate_clusters(clustered_offers):
                 print(f"⚠️ Warning: Cluster did not meet market compliance. Adjusting...")
         if dfos:
             afo = aggnto1(dfos, 4)
-            if meets_market_compliance(afo):
-                aggregated_offers.append(afo)
-            else:
-                aggregated_offers.append(afo)
-                print(f"⚠️ Warning: Cluster did not meet market compliance. Adjusting...")
+            aggregated_offers.append(afo)
     return aggregated_offers
 
 def meets_market_compliance(offer: Flexoffer) -> bool:
@@ -110,10 +106,7 @@ def needed_for_compliance(offer):
     if offer.get_total_energy() < config.MIN_BID_SIZE:
         additional_energy_needed = config.MIN_BID_SIZE - offer.get_min_overall_alloc()
         print(additional_energy_needed)
-    if market_config["require_uniform_energy"]:
+    if config.REQUIRE_UNIFORM:
         avg_energy = sum(offer.get_scheduled_allocation()) / offer.get_duration()
-        offer.set_scheduled_allocation([avg_energy] * offer.get_duration())
-    if market_config["market_time_unit"] == "15min" and offer.get_duration() % 4 != 0:
-        new_duration = (offer.get_duration() // 4) * 4
-        offer.set_scheduled_allocation(offer.get_scheduled_allocation()[:new_duration])
+        print(avg_energy)
     return offer

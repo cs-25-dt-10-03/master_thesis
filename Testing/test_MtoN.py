@@ -3,7 +3,7 @@ import pytest
 from sklearn.cluster import AgglomerativeClustering
 from optimization.flexOfferOptimizer import optimize
 from sklearn.preprocessing import StandardScaler
-from aggregation.clustering.Hierarchical_clustering import extract_features, cluster_offers, visualize_clusters, plot_dendrogram, aggregate_clusters
+from aggregation.clustering.Hierarchical_clustering import extract_features, cluster_offers, visualize_clusters, plot_dendrogram, aggregate_clusters, cluster_and_aggregate_flexoffers
 from aggregation.alignments import start_alignment_fast
 from datetime import datetime, timedelta
 from typing import List
@@ -43,8 +43,7 @@ def fos(request):
 
 
 def test_cluster_and_aggregate_flexoffers(fos, n_clusters=3):
-    clustered_flexoffers = cluster_offers(fos, n_clusters=n_clusters)
-    aggregated_offers = aggregate_clusters(clustered_flexoffers)
+    aggregated_offers = cluster_and_aggregate_flexoffers(fos, n_clusters=3)
 
     print("\n=== Aggregated FlexOffers ===\n")
     for i, afo in enumerate(aggregated_offers):
