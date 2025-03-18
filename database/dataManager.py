@@ -33,6 +33,7 @@ def get_price_at_datetime(datetime_value):
     df = pd.read_csv(os.path.join(os.path.dirname(__file__), "Electricity_prices.csv"), delimiter=",")
     df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce')
     row = df.loc[df['Timestamp'] == datetime_value]
+    
     if not row.empty:
         return row['Timestamp'].values[0]
     return None
