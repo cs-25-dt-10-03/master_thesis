@@ -1,11 +1,10 @@
 import pandas as pd
 from typing import List
 import os
-from datetime import datetime
 from config import config
 
 
-def fetchEvData() -> pd.core.frame.DataFrame:
+def fetchEvData() -> List[pd.DataFrame]:
     data = pd.read_csv(os.path.join(config.DATA_FILEPATH, "Household data.csv"), dtype="unicode", delimiter=",", skiprows=1)
     column_names = data.columns.tolist()
 
@@ -24,32 +23,60 @@ def fetchEvData() -> pd.core.frame.DataFrame:
                     "Driving distance",
                     "Times when soc not satisfied"
                     ]
+            ev_df['Passed Hours'] = ev_df['Passed Hours'].astype(float)
             dfs.append(ev_df)
         i += 1
 
     return dfs
 
-def load_data():
+
+def getEVsInRange(start_datetime: int, end_datetime: int) -> List[pd.DataFrame]:
+    dfs = fetchEvData()
+    result: List[pd.DataFrame] = []
+
+    for ev in dfs:
+        print(ev['Passed Hours'])
+        mask = (ev['Passed Hours'] >= start_datetime) & (ev['Passed Hours'] <= end_datetime)
+        result.append(ev.loc[mask])
+
+    return result
+
+
+def getEvAtDatetime(datetime_value: int) -> List[pd.DataFrame]:
+    dfs = fetchEvData()
+    result: List[pd.DataFrame] = []
+
+    for ev in dfs:
+        result.append(ev[ev['Passed Hours'] == datetime_value])
+
+    if result:
+        return result
+
+    return None
+
+
+def loadSpotPriceData():
     df = pd.read_csv(os.path.join(config.DATA_FILEPATH, "Electricity prices.csv"), dtype="unicode", delimiter=",", skiprows=0)
     df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce').dt.round("h")
     return df
 
+
 def get_price_at_datetime(datetime_value):
-    df = load_data()
+    df = loadSpotPriceData()
     datetime_value = pd.to_datetime(datetime_value, unit="s")
     row = df.loc[df['Timestamp'] == datetime_value]
     if not row.empty:
         return float(row['Spot Price [DKK/kWh]'].values[0])
     return None
 
+
 def get_prices_in_range(start_timestamp, end_timestamp):
-    df = load_data()
+    df = loadSpotPriceData()
     start_datetime = pd.to_datetime(start_timestamp, unit="s")
     end_datetime = pd.to_datetime(end_timestamp, unit="s")
     mask = (df['Timestamp'] >= start_datetime) & (df['Timestamp'] <= end_datetime)
-    
-    return df.loc[mask, 'Spot Price [DKK/kWh]'].astype(float).tolist()
 
+    return df.loc[mask, 'Spot Price [DKK/kWh]'].astype(float).tolist()
 
 
 def fetch_mFRR_by_date(target_date):
