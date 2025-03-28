@@ -1,7 +1,7 @@
 import pytest
 from datetime import datetime, timedelta
 from flexoffer_logic import Flexoffer, TimeSlice
-from aggregation.alignments import start_alignment_fast
+from aggregation.alignments import start_alignment_fast, balance_alignment_fast
 from helpers import dt_to_unix, dt_to_unix_seconds
 
 def create_test_flexoffer(offer_id, est_hour, lst_hour, et_hour, profile):
@@ -29,5 +29,6 @@ def test_aggregate_flexoffers():
     fo2 = create_test_flexoffer(2, 9, 10, 11, [(0.5, 1.0), (1.0, 1.5)])
     fo3 = create_test_flexoffer(3, 7, 8, 9, [(2.0, 3.0), (2.0, 3.0)])
     
-    aggregated_offer = start_alignment_fast([fo1, fo2, fo3])
-    aggregated_offer.print_flexoffer()
+    aggregated_offer_start = start_alignment_fast([fo1, fo2, fo3])
+    aggregated_offer_balance = start_alignment_fast([fo1, fo2, fo3])
+    aggregated_offer_balance.print_flexoffer()
