@@ -60,7 +60,7 @@ class ElectricVehicle:
         else:
             charging_time_hours = 0
 
-        time_slot_resolution = config.TIME_RESOLUTION / 3600  # Convert resolution from seconds to hours
+        time_slot_resolution = config.TIME_RESOLUTION / 3600
         charging_time_hours = round(charging_time_hours / time_slot_resolution) * time_slot_resolution
 
         # Compute the latest possible start time (ensuring it’s aligned to the time resolution)

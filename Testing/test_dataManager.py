@@ -1,14 +1,15 @@
 import datetime
 
-from database.dataManager import fetch_mFRR_by_date, getEvAtDatetime, getEVsInRange
+from database.dataManager import fetch_mFRR_by_range, getEvAtDatetime, getEVsInRange
 from config import config
 
 CONFIG = config()
 
 
-def test_fetch_mfrr_by_date():
+def test_fetch_mfrr_by_range():
     timestamp = 1710435600
-    result = fetch_mFRR_by_date(timestamp)
+    timestamp2 = 1710439200
+    result = fetch_mFRR_by_range(timestamp, timestamp2)
     print(result)
 
 
