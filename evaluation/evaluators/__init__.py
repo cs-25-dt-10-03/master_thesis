@@ -22,12 +22,6 @@ def run_all_evaluators(obj):
     eval_opt["mFRR_up_revenue"] = estimate_mfrr_up_revenue(schedule_opt, mfrr["up"])
     results["optimizer"] = eval_opt
 
-    # Greedy
-    schedule_greedy = run_greedy(obj, spot_prices)
-    eval_greedy = evaluate_schedule(schedule_greedy, spot_prices)
-    eval_greedy["mFRR_up_revenue"] = estimate_mfrr_up_revenue(schedule_greedy, mfrr["up"])
-    results["greedy"] = eval_greedy
-
     # Naive
     schedule_naive = run_naive(obj, spot_prices)
     eval_naive = evaluate_schedule(schedule_naive, spot_prices)

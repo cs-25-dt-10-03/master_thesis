@@ -5,7 +5,7 @@ from config import config
 
 
 def fetchEvData() -> List[pd.DataFrame]:
-    data = pd.read_csv(os.path.join(config.DATA_FILEPATH, "Household data.csv"), dtype="unicode", delimiter=",", skiprows=1)
+    data = pd.read_csv(os.path.join(config.DATA_FILEPATH, "Household data.csv"), delimiter=",", skiprows= 1, dtype=str, low_memory=False)
     column_names = data.columns.tolist()
 
     dfs: List[pd.DataFrame] = []
@@ -25,22 +25,19 @@ def fetchEvData() -> List[pd.DataFrame]:
                     ]
             ev_df['Passed Hours'] = ev_df['Passed Hours'].astype(float)
             dfs.append(ev_df)
-        i += 1
+        i += 6
 
     return dfs
 
 
-def getEVsInRange(start_datetime: int, end_datetime: int) -> List[pd.DataFrame]:
+def getEVsInRange(start_hour: int, end_hour: int) -> List[pd.DataFrame]:
     dfs = fetchEvData()
     result: List[pd.DataFrame] = []
-
     for ev in dfs:
-        print(ev['Passed Hours'])
-        mask = (ev['Passed Hours'] >= start_datetime) & (ev['Passed Hours'] <= end_datetime)
-        result.append(ev.loc[mask])
-
+        mask = (ev["Passed Hours"] >= start_hour) & (ev["Passed Hours"] <= end_hour)
+        filtered = ev.loc[mask]
+        result.append(filtered)
     return result
-
 
 def getEvAtDatetime(datetime_value: int) -> List[pd.DataFrame]:
     dfs = fetchEvData()
@@ -76,7 +73,8 @@ def get_prices_in_range(start_timestamp, end_timestamp):
     end_datetime = pd.to_datetime(end_timestamp, unit="s")
     mask = (df['Timestamp'] >= start_datetime) & (df['Timestamp'] <= end_datetime)
 
-    return df.loc[mask, 'Spot Price [DKK/kWh]'].astype(float).tolist()
+    filtered_df = df.loc[mask]
+    return filtered_df
 
 
 def fetch_mFRR_by_date(target_date):
@@ -101,3 +99,16 @@ def fetch_mFRR_by_range(start_date, end_date):
     mask = (df["HourDK"] >= start_date) & (df["HourDK"] <= end_date)
     df_filtered = df[mask]
     return df_filtered
+
+
+
+def fetch_Regulating_by_range(start_date, end_date):
+    df = pd.read_csv(os.path.join(config.DATA_FILEPATH, "Regulating.csv"), delimiter=";")
+    df["HourDK"] = pd.to_datetime(df["HourDK"], errors="coerce")
+    start_date = pd.to_datetime(start_date, unit="s")
+    end_date = pd.to_datetime(end_date, unit="s")
+
+    mask = (df["HourDK"] >= start_date) & (df["HourDK"] <= end_date)
+    df_filtered = df[mask]
+    return df_filtered
+
