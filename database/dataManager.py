@@ -24,6 +24,7 @@ def fetchEvData() -> List[pd.DataFrame]:
                     "Times when soc not satisfied"
                     ]
             ev_df['Passed Hours'] = ev_df['Passed Hours'].astype(float)
+            ev_df['EV model'] = ev_df['EV model'].loc[0]
             dfs.append(ev_df)
         i += 1
 
@@ -33,9 +34,7 @@ def fetchEvData() -> List[pd.DataFrame]:
 def getEVsInRange(start_datetime: int, end_datetime: int) -> List[pd.DataFrame]:
     dfs = fetchEvData()
     result: List[pd.DataFrame] = []
-
     for ev in dfs:
-        print(ev['Passed Hours'])
         mask = (ev['Passed Hours'] >= start_datetime) & (ev['Passed Hours'] <= end_datetime)
         result.append(ev.loc[mask])
 
@@ -47,7 +46,7 @@ def getEvAtDatetime(datetime_value: int) -> List[pd.DataFrame]:
     result: List[pd.DataFrame] = []
 
     for ev in dfs:
-        result.append(ev[ev['Passed Hours'] == datetime_value])
+        result.append(ev[round(ev['Passed Hours']) == datetime_value])
 
     if result:
         return result

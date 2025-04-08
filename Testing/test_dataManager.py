@@ -13,13 +13,14 @@ def test_fetch_mfrr_by_date():
 
 
 def test_getEvAtDatetime():
-    timestamp = (datetime.datetime(2023, 11, 19, 0, 0) - datetime.datetime(2020, 1, 1, 0, 0)) / CONFIG.TIME_RESOLUTION
-    result = getEvAtDatetime(timestamp)
+    timestamp = (datetime.datetime(2023, 11, 19, 1, 0, 7) - datetime.datetime(2020, 1, 1, 0, 0)).total_seconds() / CONFIG.TIME_RESOLUTION
+    print(timestamp)
+    result = getEvAtDatetime(round(timestamp))
     print(result)
 
 
 def test_getEVsInRange():
     dt1 = (datetime.datetime(2023, 11, 19, 0, 0) - datetime.datetime(2020, 1, 1, 0, 0)).total_seconds() / CONFIG.TIME_RESOLUTION
-    dt2 = (datetime.datetime(2024, 11, 19, 0, 0) - datetime.datetime(2020, 1, 1, 0, 0)).total_seconds() / CONFIG.TIME_RESOLUTION
+    dt2 = (datetime.datetime(2023, 11, 21, 0, 0) - datetime.datetime(2020, 1, 1, 0, 0)).total_seconds() / CONFIG.TIME_RESOLUTION
     result = getEVsInRange(dt1, dt2)
     print(result)
