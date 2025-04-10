@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Tuple
 import numpy as np
+import pandas as pd
 from helpers import dt_to_unix
 from scipy.stats import lognorm, beta
 from flexoffer_logic import Flexoffer, TimeSlice, DFO
@@ -47,10 +48,13 @@ class ElectricVehicle:
 
         return charging_window_start, charging_window_end
 
+    def create_flexoffer(data: pd.DataFrame) -> Flexoffer:
+        if len(data) > 24:
+            raise Exception("Alt for mange elementer:", len(data)) 
 
-    def create_flex_offer(self, tec_fo: bool) -> Flexoffer:
+    def create_synthetic_flex_offer(self, tec_fo: bool) -> Flexoffer:
         earliest_start, end_time = self.sample_start_times()
-        
+
         # Determine required charging energy
         required_energy = (self.soc_max - self.current_soc) * self.capacity if tec_fo else 0
 
@@ -78,7 +82,7 @@ class ElectricVehicle:
         min_energy = self.soc_min * self.capacity if tec_fo else 0
         max_energy = self.soc_max * self.capacity if tec_fo else 0
 
-        print(f"min energy: {min_energy}, max energy: {max_energy}" )
+        print(f"min energy: {min_energy}, max energy: {max_energy}")
 
         # Debugging checks
         assert latest_start < end_time, f"Error: latest_start ({latest_start}) should not equal end_time ({end_time})!"
