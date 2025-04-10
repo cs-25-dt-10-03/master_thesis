@@ -19,7 +19,7 @@ def test_optimizer():
     )
 
 
-    fo = ev.create_flex_offer(tec_fo=True)
+    fo = ev.create_synthetic_flex_offer(tec_fo=True)
     fos = []
     fos.append(fo)
 

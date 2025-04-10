@@ -21,7 +21,7 @@ def simulate_mock_evs(offer_id, soc_min, soc_max, charging_power, capacity):
         charging_power=charging_power,
         charging_efficiency=0.95
     )
-    return ev.create_flex_offer(tec_fo=True)
+    return ev.create_synthetic_flex_offer(tec_fo=True)
 
 @pytest.fixture(params=[10])
 def fos(request):
