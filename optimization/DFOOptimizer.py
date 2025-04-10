@@ -1,8 +1,9 @@
 from pulp import LpProblem, LpMinimize, LpVariable, lpSum, LpAffineExpression
 from typing import List
-from database.dataManager import get_price_at_datetime 
+from database.dataManager import get_price_at_datetime, fetch_mFRR_by_range
 from config import config
 from flexoffer_logic import DFO, findOrInterpolatePoints, DependencyPolygon, Point
+import pandas as pd
 
 def get_cost_array_for_dfo(dfo) -> list[float]:
     num_timesteps = len(dfo.polygons)
@@ -41,15 +42,14 @@ def add_interpolation_constraints(model, energy_var, cumulative_energy_var, poin
                 break  # Stop after applying constraints for the relevant range
 
 
-def DFO_Optimization(dfo: DFO, cost_per_unit: list) -> list:
+def DFO_Optimization(dfo: DFO) -> list:
     """Optimizes the scheduling of energy usage for a given DFO based on cost per unit of energy, 
        ensuring that each step respects cumulative dependency constraints **and** per-hour constraints."""
-    
+
+    cost_per_unit = get_cost_array_for_dfo(dfo)
     num_timesteps = len(dfo.polygons)
     if num_timesteps != len(cost_per_unit):
         raise ValueError("Mismatch between DFO timesteps and cost_per_unit size.")
-
-    cost_per_unit = get_cost_array_for_dfo(dfo)
 
     # Define LP problem
     model = LpProblem("DFO_Optimization", LpMinimize)
@@ -86,3 +86,77 @@ def DFO_Optimization(dfo: DFO, cost_per_unit: list) -> list:
     optimized_schedule = [p.varValue for p in energy_alloc]
 
     return optimized_schedule
+
+
+def DFO_MultiMarketOptimization(dfo: DFO) -> pd.DataFrame:
+    num_timesteps = len(dfo.polygons)
+
+    prices_df = fetch_mFRR_by_range(dfo.earliest_start, dfo.earliest_start + num_timesteps * config.TIME_RESOLUTION)
+    up_prices = prices_df['mFRR_UpPriceDKK'].str.replace(',', '.').astype(float).tolist()
+    down_prices = prices_df['mFRR_DownPriceDKK'].str.replace(',', '.').astype(float).tolist()
+
+    model = LpProblem("DFO_MultiMarket", LpMaximize)
+
+    p_t = [LpVariable(f"p_{t}", lowBound=0) for t in range(num_timesteps)]
+    r_up = [LpVariable(f"r_up_{t}", lowBound=0) for t in range(num_timesteps)]
+    r_down = [LpVariable(f"r_down_{t}", lowBound=0) for t in range(num_timesteps)]
+
+    model += lpSum(r_up[t] * up_prices[t] + r_down[t] * down_prices[t] for t in range(num_timesteps)), "Total_Revenue"
+
+    cumulative_energy = 0
+    for t in range(num_timesteps):
+        polygon = dfo.polygons[t]
+        points = polygon.points
+
+        model += r_up[t] <= p_t[t], f"r_up_limit_{t}"
+        max_power_t = max(p.y for p in points)
+        model += r_down[t] <= max_power_t - p_t[t], f"r_down_limit_{t}"
+
+        for k in range(1, len(points) - 1, 2):
+            prev_min = points[k - 1]
+            prev_max = points[k]
+            next_min = points[k + 1]
+            next_max = points[k + 2]
+
+            if next_min.x == prev_min.x or next_max.x == prev_max.x:
+                continue
+
+            min_energy_expr = prev_min.y + (next_min.y - prev_min.y) / (next_min.x - prev_min.x) * (cumulative_energy - prev_min.x)
+            max_energy_expr = prev_max.y + (next_max.y - prev_max.y) / (next_max.x - prev_max.x) * (cumulative_energy - prev_max.x)
+
+            model += p_t[t] >= min_energy_expr, f"min_interp_{t}"
+            model += p_t[t] <= max_energy_expr, f"max_interp_{t}"
+            break
+
+        cumulative_energy += p_t[t]
+
+    model.solve()
+
+    results = []
+    total_revenue = 0
+    for t in range(num_timesteps):
+        pt = p_t[t].varValue
+        rup = r_up[t].varValue
+        rdown = r_down[t].varValue
+        up_price = up_prices[t]
+        down_price = down_prices[t]
+        total_revenue += (rup * up_price + rdown * down_price)
+
+        results.append({
+            'offer_id': dfo.dfo_id,
+            't': t,
+            'charge_kW': pt,
+            'r_up_kW': rup,
+            'r_down_kW': rdown,
+            'up_price_DKK': up_price,
+            'down_price_DKK': down_price,
+            'total_revenue': None
+        })
+
+    if results:
+        results[-1]['total_revenue'] = total_revenue
+
+    df = pd.DataFrame(results)
+    df.to_csv("evaluation/results/dfo_multimarket_results.csv", index=False)
+
+    return df

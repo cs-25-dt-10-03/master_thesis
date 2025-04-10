@@ -149,7 +149,6 @@ def test_disagg1to2_and_disagg1toN(ev1, ev2, ev3, charging_window_start, duratio
 
 def test_DFO_Optimization(ev3, charging_window_start, duration):
     """Tests DFO optimization function with a simple cost structure."""
-    cost_per_unit = [0.15, 0.20, 0.18]  # Example spot prices per timestep
 
     dfo1 = ev3.create_dfo(charging_window_start, duration, numsamples=4)
 
@@ -157,7 +156,7 @@ def test_DFO_Optimization(ev3, charging_window_start, duration):
     assert len(cost_per_unit) == len(dfo1.polygons)
 
     # Run optimization
-    optimized_schedule = DFO_Optimization(dfo1, cost_per_unit)
+    optimized_schedule = DFO_Optimization(dfo1)
 
     # Assertions: Check that optimization produces valid results
     assert isinstance(optimized_schedule, list)
