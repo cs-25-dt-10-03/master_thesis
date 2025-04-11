@@ -46,6 +46,7 @@ def getEVsInRange(start_hour: int, end_hour: int) -> List[pd.DataFrame]:
         mask = (ev['Passed Hours'] >= start_hour) & (ev['Passed Hours'] <= end_hour)
         pruned_ev = ev.loc[mask]
         if not pruned_ev.empty:
+            pruned_ev.reset_index(drop=True, inplace=True)
             result.append(pruned_ev)
 
     return result

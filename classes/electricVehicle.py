@@ -92,9 +92,6 @@ class ElectricVehicle:
         assert required_energy >= 0, f"Error: required_energy is negative ({required_energy})!"
         assert charging_time_hours >= time_slot_resolution, f"Error: charging_time ({charging_time_hours} h) is too small!"
 
-        print("min is: ", min_energy)
-        print("max is: ", max_energy)
-
         return Flexoffer(
             offer_id=self.vehicle_id,
             earliest_start=dt_to_unix(earliest_start),
