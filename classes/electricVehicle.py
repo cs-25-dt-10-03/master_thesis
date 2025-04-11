@@ -2,7 +2,6 @@ from datetime import datetime, timedelta
 import math
 from typing import Tuple
 import numpy as np
-import pandas as pd
 from helpers import dt_to_unix
 from scipy.stats import lognorm, beta
 from flexoffer_logic import Flexoffer, TimeSlice, DFO
@@ -85,15 +84,16 @@ class ElectricVehicle:
         energy_profile = [TimeSlice(0.0, max_energy_per_slot) for _ in range(duration)]
 
         # Define min and max overall allocation
-        min_energy = self.soc_min * self.capacity
+        min_energy = self.current_soc * self.capacity
         max_energy = self.soc_max * self.capacity
-
-        print(f"min energy: {min_energy}, max energy: {max_energy}")
 
         # Debugging checks
         assert latest_start < end_time, f"Error: latest_start ({latest_start}) should not equal end_time ({end_time})!"
         assert required_energy >= 0, f"Error: required_energy is negative ({required_energy})!"
         assert charging_time_hours >= time_slot_resolution, f"Error: charging_time ({charging_time_hours} h) is too small!"
+
+        print("min is: ", min_energy)
+        print("max is: ", max_energy)
 
         return Flexoffer(
             offer_id=self.vehicle_id,

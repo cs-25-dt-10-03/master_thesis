@@ -45,7 +45,6 @@ def all_data() -> List[fo.Flexoffer]:
                 start = None
                 stop = None
 
-
     return result
 
 
