@@ -12,8 +12,8 @@ def test_foParserAllData():
 
 
 def test_foParserRangeData():
-    dt1 = (datetime.datetime(2023, 11, 19, 0, 0) - datetime.datetime(2020, 1, 1, 0, 0)).total_seconds() / CONFIG.TIME_RESOLUTION
-    dt2 = (datetime.datetime(2023, 11, 21, 0, 0) - datetime.datetime(2020, 1, 1, 0, 0)).total_seconds() / CONFIG.TIME_RESOLUTION
+    dt1 = (datetime.datetime(2030, 6, 30, 0, 0) - datetime.datetime(2020, 1, 1, 0, 0)).total_seconds() / CONFIG.TIME_RESOLUTION
+    dt2 = (datetime.datetime(2031, 6, 30, 0, 0) - datetime.datetime(2020, 1, 1, 0, 0)).total_seconds() / CONFIG.TIME_RESOLUTION
     result = fo_parser(dt1, dt2)
     for element in result:
         element.print_flexoffer()
