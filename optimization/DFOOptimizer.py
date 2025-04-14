@@ -1,4 +1,4 @@
-from pulp import LpProblem, LpMinimize, LpVariable, lpSum, LpAffineExpression
+from pulp import LpProblem, LpMaximize, LpMinimize, LpVariable, lpSum, LpAffineExpression
 from typing import List
 from database.dataManager import get_price_at_datetime, fetch_mFRR_by_range
 from config import config
@@ -9,7 +9,7 @@ def get_cost_array_for_dfo(dfo) -> list[float]:
     num_timesteps = len(dfo.polygons)
     cost_array = []
     for t in range(num_timesteps):
-        step_timestamp = dfo.earliest_start + t * config.TIME_RESOLUTION
+        step_timestamp = dfo.earliest_start_time + t * config.TIME_RESOLUTION
         price = get_price_at_datetime(step_timestamp)
         cost_array.append(price)
     return cost_array
@@ -87,46 +87,67 @@ def DFO_Optimization(dfo: DFO) -> list:
 
     return optimized_schedule
 
-
+# 🧠 : Optimize DFO to mazimize mFFR revenue
 def DFO_MultiMarketOptimization(dfo: DFO) -> pd.DataFrame:
     num_timesteps = len(dfo.polygons)
 
-    prices_df = fetch_mFRR_by_range(dfo.earliest_start, dfo.earliest_start + num_timesteps * config.TIME_RESOLUTION)
+    # Fetch mFRR prices for the given time range
+    prices_df = fetch_mFRR_by_range(dfo.get_est(), dfo.get_et())
     up_prices = prices_df['mFRR_UpPriceDKK'].str.replace(',', '.').astype(float).tolist()
     down_prices = prices_df['mFRR_DownPriceDKK'].str.replace(',', '.').astype(float).tolist()
 
+    # Ensure length matches
+    if len(up_prices) < num_timesteps or len(down_prices) < num_timesteps:
+        raise ValueError(f"Price data too short: {len(up_prices)=}, {len(down_prices)=}, {num_timesteps=}")
+
     model = LpProblem("DFO_MultiMarket", LpMaximize)
 
+    # Decision variables: 
+    # p_t: power usage from spotmarket
+    # r_up: Power reserve for mFRR upward regulation
+    # r_down: Power reserve for mFRR downward regulation
     p_t = [LpVariable(f"p_{t}", lowBound=0) for t in range(num_timesteps)]
     r_up = [LpVariable(f"r_up_{t}", lowBound=0) for t in range(num_timesteps)]
     r_down = [LpVariable(f"r_down_{t}", lowBound=0) for t in range(num_timesteps)]
 
+    # Objective function: Maximize total revenue from mFRR services
     model += lpSum(r_up[t] * up_prices[t] + r_down[t] * down_prices[t] for t in range(num_timesteps)), "Total_Revenue"
 
-    cumulative_energy = 0
+    # Add DFO specific constraints
+    cumulative_energy = LpAffineExpression() # 🧠 IMPORTANT: make cumulative_energy a pulp symbolic expression
+    max_energy_expr = 0
+    min_energy_expr = 0
     for t in range(num_timesteps):
         polygon = dfo.polygons[t]
         points = polygon.points
 
-        model += r_up[t] <= p_t[t], f"r_up_limit_{t}"
-        max_power_t = max(p.y for p in points)
-        model += r_down[t] <= max_power_t - p_t[t], f"r_down_limit_{t}"
+        if len(points) < 4:
+            min_energy_expr = points[0].y
+            max_energy_expr = points[1].y
 
-        for k in range(1, len(points) - 1, 2):
-            prev_min = points[k - 1]
-            prev_max = points[k]
-            next_min = points[k + 1]
-            next_max = points[k + 2]
+            model += p_t[t] >= min_energy_expr, f"min_energy_{t}"
+            model += p_t[t] <= max_energy_expr, f"max_energy_{t}"
+            model += r_up[t] <= p_t[t], f"r_up_limit_{t}"
+            model += r_down[t] <= max_energy_expr - p_t[t], f"r_down_limit_{t}"
+        else:
+            for k in range(1, len(points) - 2, 2):
+                prev_min = points[k - 1]
+                prev_max = points[k]
+                next_min = points[k + 1]
+                next_max = points[k + 2]
+                
+                if next_min.x == prev_min.x or next_max.x == prev_max.x:
+                    continue
+                
+                min_energy_expr = prev_min.y + ((next_min.y - prev_min.y) / (next_min.x - prev_min.x)) * (cumulative_energy - prev_min.x)
+                max_energy_expr = prev_max.y + ((next_max.y - prev_max.y) / (next_max.x - prev_max.x)) * (cumulative_energy - prev_max.x)
+                
+                model += p_t[t] >= min_energy_expr, f"min_interp_{t}"
+                model += p_t[t] <= max_energy_expr, f"max_interp_{t}"
+                break
 
-            if next_min.x == prev_min.x or next_max.x == prev_max.x:
-                continue
-
-            min_energy_expr = prev_min.y + (next_min.y - prev_min.y) / (next_min.x - prev_min.x) * (cumulative_energy - prev_min.x)
-            max_energy_expr = prev_max.y + (next_max.y - prev_max.y) / (next_max.x - prev_max.x) * (cumulative_energy - prev_max.x)
-
-            model += p_t[t] >= min_energy_expr, f"min_interp_{t}"
-            model += p_t[t] <= max_energy_expr, f"max_interp_{t}"
-            break
+            model += r_up[t] <= p_t[t], f"r_up_limit_{t}"
+            model += r_down[t] <= max_energy_expr - p_t[t], f"r_down_limit_{t}"
 
         cumulative_energy += p_t[t]
 

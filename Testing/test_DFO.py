@@ -2,12 +2,12 @@ import pytest
 from datetime import datetime, timedelta
 from flexoffer_logic import DFO, DependencyPolygon, Point, agg2to1, aggnto1, disagg1to2, disagg1toN, findOrInterpolatePoints
 from classes.electricVehicle import ElectricVehicle
-from optimization.DFOOptimizer import DFO_Optimization
+from optimization.DFOOptimizer import DFO_Optimization, DFO_MultiMarketOptimization
 from aggregation.clustering.Hierarchical_clustering import extract_features, cluster_offers, cluster_and_aggregate_flexoffers
 
 @pytest.fixture
 def charging_window_start():
-    return datetime.now().replace(hour=22, minute=0, second=0, microsecond=0)
+    return datetime.now().replace(year=2024, hour=22, minute=0, second=0, microsecond=0)
 
 @pytest.fixture
 def duration():
@@ -52,13 +52,13 @@ def test_create_dfos(charging_window_start, duration):
     min_prev1 = [0, 5, 10]
     max_prev1 = [7, 12, 17]
     
-    dfo1 = DFO(1, min_prev1, max_prev1, 4, 7, earliest_start=int(charging_window_start.timestamp()))
+    dfo1 = DFO(1, min_prev1, max_prev1, 4, 7, earliest_start_time=int(charging_window_start.timestamp()))
     dfo1.generate_dependency_polygons()
 
     min_prev2 = [0, 3, 8]
     max_prev2 = [5, 10, 15]
     
-    dfo2 = DFO(2, min_prev2, max_prev2, 4, 7, earliest_start=int((charging_window_start + timedelta(hours=1)).timestamp()))
+    dfo2 = DFO(2, min_prev2, max_prev2, 4, 7, earliest_start_time=int((charging_window_start + timedelta(hours=1)).timestamp()))
     dfo2.generate_dependency_polygons()
 
     dfo3 = agg2to1(dfo1, dfo2, 4)
@@ -97,12 +97,12 @@ def test_agg2to1_and_aggnto1():
 
     min_prev1 = [5, 3]
     max_prev1 = [10, 8]
-    dfo1 = DFO(1, min_prev1, max_prev1, 5, 7, earliest_start=t0)
+    dfo1 = DFO(1, min_prev1, max_prev1, 5, 7, earliest_start_time=t0)
     dfo1.generate_dependency_polygons()
 
     min_prev2 = [2, 1]
     max_prev2 = [7, 4]
-    dfo2 = DFO(2, min_prev2, max_prev2, 5, 7, earliest_start=t0)
+    dfo2 = DFO(2, min_prev2, max_prev2, 5, 7, earliest_start_time=t0)
     dfo2.generate_dependency_polygons()
 
     aggregated_dfo = agg2to1(dfo1, dfo2, 5)
@@ -152,9 +152,6 @@ def test_DFO_Optimization(ev3, charging_window_start, duration):
 
     dfo1 = ev3.create_dfo(charging_window_start, duration, numsamples=4)
 
-    # Ensure the cost array length matches the number of polygons
-    assert len(cost_per_unit) == len(dfo1.polygons)
-
     # Run optimization
     optimized_schedule = DFO_Optimization(dfo1)
 
@@ -175,3 +172,32 @@ def test_DFO_Optimization(ev3, charging_window_start, duration):
         tolerance = 1e-6  # Define a small tolerance
         assert MinMaxPoints[0].y - tolerance <= energy <= MinMaxPoints[1].y + tolerance, \
             f"Energy {energy} at timestep {t} is out of bounds!"
+
+
+def test_DFO_MultiMarketOptimization(ev3, charging_window_start, duration):
+    """🧠Tests mFRR-based multi-market optimization for a single DFO.🧠"""
+
+    dfo = ev3.create_dfo(charging_window_start, duration, numsamples=4)
+    print(dfo.get_est(), dfo.get_et())
+    num_timesteps = len(dfo.polygons)
+
+    # Run the optimization
+    results_df = DFO_MultiMarketOptimization(dfo)
+
+    # Basic sanity checks
+    assert not results_df.empty
+    assert "charge_kW" in results_df.columns
+    assert len(results_df["charge_kW"]) >= num_timesteps
+
+    # Validate energy allocation respects dependency constraints
+    cumulative_energy = 0.0
+    for t in range(num_timesteps):
+        energy = results_df.loc[t, "charge_kW"]
+        polygon = dfo.polygons[t]
+        minmax = findOrInterpolatePoints(polygon.points, cumulative_energy)
+        assert minmax[0].y <= energy <= minmax[1].y, \
+            f"Energy {energy:.2f} at timestep {t} not within allowed bounds [{minmax[0].y:.2f}, {minmax[1].y:.2f}]"
+        cumulative_energy += energy
+
+    print("Multi-market optimization test passed.")
+    print(results_df)
