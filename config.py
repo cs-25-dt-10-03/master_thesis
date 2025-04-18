@@ -25,4 +25,14 @@ class config:
     REQUIRE_UNIFORM = _config_data.get("REQUIRE_UNIFORM", 0)
     MIN_BID_SIZE = _config_data.get("MIN_BID_SIZE", 1000)
 
+    RESOLUTION = "hourly" if TIME_RESOLUTION == 3600 else "15min"
     DATA_FILEPATH = os.path.join("..", "SmartCharging_2020_to_2032")
+
+    market_config = {
+    "modules": {
+        "spot": True,
+        "reserve": True,
+        "activation": True
+    },
+    "strategy": "joint",  # or "sequential"
+}

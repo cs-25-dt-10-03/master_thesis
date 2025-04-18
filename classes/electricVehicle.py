@@ -34,6 +34,8 @@ class ElectricVehicle:
         arrival_sigma = 0.1
 
         arrival_hour = int(lognorm.rvs(s=arrival_sigma, scale=np.exp(arrival_mu)))
+        if arrival_hour >= 24:
+            arrival_hour = 23    
         charging_window_start = datetime.now().replace(year=2024, hour=arrival_hour, minute=0, second=0, microsecond=0)
 
         dep_mu = np.log(8)
@@ -77,8 +79,6 @@ class ElectricVehicle:
         # Define min and max overall allocation
         min_energy = self.soc_min * self.capacity if tec_fo else 0
         max_energy = self.soc_max * self.capacity if tec_fo else 0
-
-        print(f"min energy: {min_energy}, max energy: {max_energy}" )
 
         # Debugging checks
         assert latest_start < end_time, f"Error: latest_start ({latest_start}) should not equal end_time ({end_time})!"

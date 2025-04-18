@@ -54,63 +54,84 @@ def getEvAtDatetime(datetime_value: int) -> List[pd.DataFrame]:
     return None
 
 
+
 def loadSpotPriceData():
-    df = pd.read_csv(os.path.join(config.DATA_FILEPATH, "Electricity prices.csv"), dtype="unicode", delimiter=",", skiprows=0)
-    df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce').dt.round("h")
+    if config.TIME_RESOLUTION == 3600:
+        df = pd.read_csv(os.path.join(config.DATA_FILEPATH, "ElspotPrices.csv"), dtype="unicode", delimiter=",", skiprows=0)
+    else:
+        print("Hiya papaya!")
+        df = pd.read_csv(os.path.join(config.DATA_FILEPATH, "ElspotPrices_15min.csv"), dtype="unicode", delimiter=",", skiprows=0)
+    df['HourDK'] = pd.to_datetime(df['HourDK'], errors='coerce')
+    df['SpotPriceDKK'] = pd.to_numeric(df['SpotPriceDKK'], errors='coerce')
     return df
 
 
 def get_price_at_datetime(datetime_value):
     df = loadSpotPriceData()
     datetime_value = pd.to_datetime(datetime_value, unit="s")
-    row = df.loc[df['Timestamp'] == datetime_value]
+    row = df.loc[df['HourDK'] == datetime_value]
     if not row.empty:
-        return float(row['Spot Price [DKK/kWh]'].values[0])
+        return float(row['SpotPriceDKK'].values[0])
     return None
 
 
 def get_prices_in_range(start_timestamp, end_timestamp):
+
     df = loadSpotPriceData()
     start_datetime = pd.to_datetime(start_timestamp, unit="s")
     end_datetime = pd.to_datetime(end_timestamp, unit="s")
-    mask = (df['Timestamp'] >= start_datetime) & (df['Timestamp'] <= end_datetime)
-
+    print(f"Starttt:DARE TIME ::: { start_datetime}, \n {end_datetime}")
+    mask = (df['HourDK'] >= start_datetime) & (df['HourDK'] <= end_datetime)
     filtered_df = df.loc[mask]
+    filtered_df = filtered_df.set_index('HourDK')
+    filtered_df.drop(columns=['HourUTC'], inplace=True)
     return filtered_df
 
 
 def fetch_mFRR_by_date(target_date):
-    df = pd.read_csv(os.path.join(config.DATA_FILEPATH, "mFRR.csv"), delimiter=";")
-    df["HourDK"] = pd.to_datetime(df["HourDK"], errors="coerce")
-
+    if config.TIME_RESOLUTION == 3600:
+        df = pd.read_csv(os.path.join(config.DATA_FILEPATH, "mFRR.csv"), delimiter=",")
+    else:
+        df = pd.read_csv(os.path.join(config.DATA_FILEPATH, "mFRR_15min.csv"), delimiter=",")
+    df['HourDK'] = pd.to_datetime(df['HourDK'], errors='coerce')
     target_date = pd.to_datetime(target_date, unit="s")
     corresponding_row = df[df["HourDK"] == target_date]
-
-    print(f"target date {target_date}")
-    print(f"df selected date {corresponding_row}")
 
     return corresponding_row
 
 
 def fetch_mFRR_by_range(start_date, end_date):
-    df = pd.read_csv(os.path.join(config.DATA_FILEPATH, "mFRR.csv"), delimiter=";")
-    df["HourDK"] = pd.to_datetime(df["HourDK"], errors="coerce")
+    if config.TIME_RESOLUTION == 3600:
+        df = pd.read_csv(os.path.join(config.DATA_FILEPATH, "mFRR.csv"), delimiter=",")
+    else:
+        df = pd.read_csv(os.path.join(config.DATA_FILEPATH, "mFRR_15min.csv"), delimiter=",")
+
     start_date = pd.to_datetime(start_date, unit="s")
     end_date = pd.to_datetime(end_date, unit="s")
+    df['HourDK'] = pd.to_datetime(df['HourDK'], errors='coerce')
+    df['mFRR_UpPriceDKK'] = pd.to_numeric(df['mFRR_UpPriceDKK'], errors='coerce')
+    df['mFRR_DownPriceDKK'] = pd.to_numeric(df['mFRR_DownPriceDKK'], errors='coerce')
 
     mask = (df["HourDK"] >= start_date) & (df["HourDK"] <= end_date)
     df_filtered = df[mask]
+    df_filtered = df_filtered.set_index('HourDK')
+    df_filtered.drop(columns=['HourUTC'], inplace=True)
     return df_filtered
 
 
-
 def fetch_Regulating_by_range(start_date, end_date):
-    df = pd.read_csv(os.path.join(config.DATA_FILEPATH, "Regulating.csv"), delimiter=";")
+    if config.TIME_RESOLUTION == 3600:
+        df = pd.read_csv(os.path.join(config.DATA_FILEPATH, "Regulating.csv"), delimiter=",")
+    else:
+        df = pd.read_csv(os.path.join(config.DATA_FILEPATH, "Regulating_15min.csv"), delimiter=",")
+
     df["HourDK"] = pd.to_datetime(df["HourDK"], errors="coerce")
     start_date = pd.to_datetime(start_date, unit="s")
     end_date = pd.to_datetime(end_date, unit="s")
 
     mask = (df["HourDK"] >= start_date) & (df["HourDK"] <= end_date)
     df_filtered = df[mask]
+    df_filtered = df_filtered.set_index('HourDK')
+    df_filtered.drop(columns=['HourUTC'], inplace=True)
     return df_filtered
 
