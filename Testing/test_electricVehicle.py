@@ -41,7 +41,7 @@ def test_create_flex_offer():
         charging_power=7,
         charging_efficiency=0.95
     )
-    fo = ev.create_flex_offer(tec_fo=True)
+    fo = ev.create_synthetic_flex_offer(tec_fo=True)
     assert isinstance(fo, Flexoffer)
     assert len(fo.get_profile()) > 0
     assert fo.get_min_overall_alloc() is not None

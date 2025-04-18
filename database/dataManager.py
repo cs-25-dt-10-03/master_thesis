@@ -25,10 +25,18 @@ def fetchEvData() -> List[pd.DataFrame]:
                     ]
             ev_df['Passed Hours'] = ev_df['Passed Hours'].astype(float)
             ev_df['EV model'] = ev_df['EV model'].loc[0]
-            dfs.append(ev_df)
+            ev_df = ev_df.loc[ev_df['EV model'] != 'no EV']
+            ev_df = ev_df.dropna(subset=['EV state'])
+            ev_df.reset_index(drop=True, inplace=True)
+            if not ev_df.empty:
+                dfs.append(ev_df)
         i += 6
 
     return dfs
+
+
+def fetchEvModels() -> pd.DataFrame:
+    return pd.read_csv(os.path.join(config.DATA_FILEPATH, "EV Models.csv"), delimiter=",", dtype=str, low_memory=False)
 
 
 def getEVsInRange(start_hour: int, end_hour: int) -> List[pd.DataFrame]:
@@ -36,7 +44,10 @@ def getEVsInRange(start_hour: int, end_hour: int) -> List[pd.DataFrame]:
     result: List[pd.DataFrame] = []
     for ev in dfs:
         mask = (ev['Passed Hours'] >= start_hour) & (ev['Passed Hours'] <= end_hour)
-        result.append(ev.loc[mask])
+        pruned_ev = ev.loc[mask]
+        if not pruned_ev.empty:
+            pruned_ev.reset_index(drop=True, inplace=True)
+            result.append(pruned_ev)
 
     return result
 

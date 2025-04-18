@@ -18,7 +18,7 @@ def ev():
     )
 
 def test_create_flex_offer(ev):
-    fo = ev.create_flex_offer(tec_fo=True)
+    fo = ev.create_synthetic_flex_offer(tec_fo=True)
     assert fo.get_est() <= fo.get_lst()
     assert fo.get_lst() < fo.get_et()
     assert len(fo.get_profile()) > 0

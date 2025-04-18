@@ -1,6 +1,6 @@
 import datetime
 
-from database.dataManager import fetch_mFRR_by_range, getEvAtDatetime, getEVsInRange
+from database.dataManager import fetch_mFRR_by_range, getEvAtDatetime, getEVsInRange, fetchEvModels
 from config import config
 
 CONFIG = config()
@@ -25,3 +25,7 @@ def test_getEVsInRange():
     dt2 = (datetime.datetime(2023, 11, 21, 0, 0) - datetime.datetime(2020, 1, 1, 0, 0)).total_seconds() / CONFIG.TIME_RESOLUTION
     result = getEVsInRange(dt1, dt2)
     print(result)
+
+
+def test_fetchEvModels():
+    fetchEvModels()
