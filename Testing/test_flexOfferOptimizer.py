@@ -1,10 +1,11 @@
-from optimization.flexOfferOptimizer import optimize, MultiMarketoptimize
+from optimization.flexOfferOptimizer import optimize, mFRR_reserve_only, optimize_Spot_and_mfrr, sequential_schedule_mfrr_then_spot, optimize_spot_reserve_activation
 from classes.electricVehicle import ElectricVehicle
 from database.dataManager import get_prices_in_range
 import pulp
 from datetime import datetime
 import pytest
 from config import config
+import pandas as pd
 from flexoffer_logic import Flexoffer, TimeSlice
 
 def test_optimizer():
@@ -23,4 +24,3 @@ def test_optimizer():
     fos = []
     fos.append(fo)
 
-    fos = MultiMarketoptimize(fos)

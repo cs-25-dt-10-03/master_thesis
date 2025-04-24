@@ -25,4 +25,14 @@ class config:
     REQUIRE_UNIFORM = _config_data.get("REQUIRE_UNIFORM", 0)
     MIN_BID_SIZE = _config_data.get("MIN_BID_SIZE", 1000)
 
+
+    PENALTY = 1000
+    RESOLUTION = "hourly" if TIME_RESOLUTION == 3600 else "15min"
     DATA_FILEPATH = os.path.join("..", "SmartCharging_2020_to_2032")
+
+
+    # Market modules on/off
+    MODE = "joint"
+    RUN_SPOT = True
+    RUN_RESERVE = True
+    RUN_ACTIVATION = False
