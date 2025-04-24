@@ -22,20 +22,8 @@ def optimize(offers: List[Flexoffer]) -> List[Flexoffer]:
     """
 
     earliest_start = min(fo.get_est() for fo in offers)
-    res = config.TIME_RESOLUTION
-    offsets = [int((fo.get_est() - earliest_start) / res) for fo in offers]
-    T = max(offset + len(fo.get_profile()) for offset, fo in zip(offsets, offers))
+    T = pad_profiles_to_common_timeline(offers)
     A = len(offers)
-
-
-    for offset, fo in zip(offsets, offers):
-        prof = fo.get_profile()
-        pre_pad = [TimeSlice(0,0)] * offset
-        post_pad = [TimeSlice(0,0)] * (T - offset - len(prof))
-        prof[:0] = pre_pad
-        prof.extend(post_pad)
-    
-
 
 
     spot_prices, reserve_prices, activation_prices, indicators = load_and_prepare_prices(earliest_start, T, resolution=config.TIME_RESOLUTION)
@@ -157,3 +145,33 @@ def optimize(offers: List[Flexoffer]) -> List[Flexoffer]:
         return merged
     else:
         raise ValueError("Unknown MODE")
+
+
+
+def pad_profiles_to_common_timeline(offers: List[Flexoffer]) -> int:
+    """
+    Pads all FlexOffers in-place so their profiles align on a common time axis.
+    This ensures no index errors during optimization.
+
+    Returns:
+        T (int): common time length
+    """
+    res = config.TIME_RESOLUTION
+    earliest = min(fo.get_est() for fo in offers)
+    
+    offsets = [
+        int((fo.get_est() - earliest) / res)
+        for fo in offers
+    ]
+    
+    T = max(offset + len(fo.get_profile()) for offset, fo in zip(offsets, offers))
+
+    for offset, fo in zip(offsets, offers):
+        profile = fo.get_profile()
+        pre = [TimeSlice(0, 0)] * offset
+        post = [TimeSlice(0, 0)] * (T - offset - len(profile))
+        profile[:0] = pre      # insert at front
+        profile.extend(post)   # append at end
+        fo.set_profile(pre + profile + post)        
+
+    return T
