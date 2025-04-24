@@ -159,11 +159,11 @@ def load_and_prepare_prices(start_ts, horizon_slots, resolution):
     """
 
     if resolution == 3600:
-        spot = pd.read_csv(os.path.join(config.DATA_FILEPATH, "ElspotPrices.csv"), parse_dates=['HourDK'], usecols=['HourDK', 'SpotPriceDKK'])
+        spot = pd.read_csv(os.path.join(config.DATA_FILEPATH, "Elspotprices.csv"), parse_dates=['HourDK'], usecols=['HourDK', 'SpotPriceDKK'])
         mfrr = pd.read_csv(os.path.join(config.DATA_FILEPATH, "mFRR.csv"), parse_dates=['HourDK'], usecols=['HourDK', 'mFRR_UpPriceDKK', 'mFRR_DownPriceDKK'])
         act = pd.read_csv(os.path.join(config.DATA_FILEPATH, "Regulating.csv"), parse_dates=['HourDK'], usecols=['HourDK', 'BalancingPowerPriceUpDKK', 'BalancingPowerPriceDownDKK'])
     else:
-        spot = pd.read_csv(os.path.join(config.DATA_FILEPATH, "ElspotPrices_15min.csv"), parse_dates=['HourDK'], usecols=['HourDK', 'SpotPriceDKK'])
+        spot = pd.read_csv(os.path.join(config.DATA_FILEPATH, "Elspotprices_15min.csv"), parse_dates=['HourDK'], usecols=['HourDK', 'SpotPriceDKK'])
         mfrr = pd.read_csv(os.path.join(config.DATA_FILEPATH, "mFRR_15min.csv"), parse_dates=['HourDK'], usecols=['HourDK', 'mFRR_UpPriceDKK', 'mFRR_DownPriceDKK'])
         act = pd.read_csv(os.path.join(config.DATA_FILEPATH, "Regulating_15min.csv"), parse_dates=['HourDK'], usecols=['HourDK', 'BalancingPowerPriceUpDKK', 'BalancingPowerPriceDownDKK'])
 
