@@ -32,6 +32,7 @@ def optimize(offers: List[Flexoffer]) -> List[Flexoffer]:
         prob = pulp.LpProblem("scheduling", pulp.LpMaximize)
 
         # --- Variables ---
+        t_sch = {(a,t): pulp.LpVariable(f"t_{a}_{t}", lowBound=0) for a in range(A) for t in range(T)}
         if use_spot:
             p = {(a,t): pulp.LpVariable(f"p_{a}_{t}", lowBound=0) for a in range(A) for t in range(T)}
         else:
@@ -110,6 +111,18 @@ def optimize(offers: List[Flexoffer]) -> List[Flexoffer]:
                 sol["pb_dn"][a] = { t: pulp.value(pb_dn[(a,t)]) for t in range(T) }
                 sol["s_up"][a]  = { t: pulp.value(s_up[(a,t)])  for t in range(T) }
                 sol["s_dn"][a]  = { t: pulp.value(s_dn[(a,t)])  for t in range(T) }
+
+        for a, fo in enumerate(offers):
+            alloc = [sol["p"][a][t] for t in range(T)]
+            fo.set_scheduled_allocation(alloc)
+
+            # find første t med non-zero for start time
+            try:
+                first = next(t for t, v in enumerate(alloc) if v > 1e-6)
+            except StopIteration:
+                first = 0
+            fo.set_scheduled_start_time(earliest_start + first * config.TIME_RESOLUTION)
+
         return sol
 
 

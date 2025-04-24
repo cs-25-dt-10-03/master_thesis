@@ -34,5 +34,5 @@ class config:
     # Market modules on/off
     MODE = "joint"
     RUN_SPOT = True
-    RUN_RESERVE = True
+    RUN_RESERVE = False
     RUN_ACTIVATION = False

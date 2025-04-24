@@ -46,7 +46,7 @@ def test_cluster_and_aggregate_flexoffers_mock_data(fos, n_clusters=3):
 
     print("\n=== Aggregated FlexOffers ===\n")
     for i, afo in enumerate(aggregated_offers):
-        afo = optimize(afo)
+        optimize(afo)
         print(f"Aggregated FlexOffer {i+1}:")
         afo.print_flexoffer()
         print("\n" + "="*50 + "\n")
@@ -59,7 +59,7 @@ def test_cluster_and_aggregate_flexoffers():
     print("Len of fos: ", len(fos))
     afo = cluster_and_aggregate_flexoffers(fos, 5)
 
-    afo = optimize(afo)
+    optimize(afo)
     print("\n=== Aggregated FlexOffers ===\n")
     for i, fo in enumerate(afo):
         print(f"Aggregated FlexOffer {i+1}:")
