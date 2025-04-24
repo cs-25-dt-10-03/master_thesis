@@ -1,34 +1,35 @@
+
+from optimization.flexOfferOptimizer import optimize
+from classes.electricVehicle import ElectricVehicle
+from database.dataManager import get_prices_in_range
+import pulp
+from datetime import datetime
+import pytest
+from config import config
+import pandas as pd
+from flexoffer_logic import Flexoffer, TimeSlice
 from optimization.simulator import create_aggregated_offers
 from evaluation.eval import run_evaluation
-from flexoffer_logic import Flexoffer, TimeSlice
-from optimization.flexOfferOptimizer import schedule_offers
+from optimization.flexOfferOptimizer import optimize
 from database.dataManager import load_and_prepare_prices
 import pandas as pd
 from config import config
 import os
 
-DATA_PATH = os.path.dirname(__file__)
 
-start_ts = pd.Timestamp("2024-03-01 00:00:00")
-horizon = 24
 
-spot, reserve, activation, indicators = load_and_prepare_prices(
-    os.path.join(config.DATA_FILEPATH, "ElspotPrices.csv"),
-    os.path.join(config.DATA_FILEPATH, "mFRR.csv"),
-    os.path.join(config.DATA_FILEPATH, "Regulating.csv"),
-    start_ts,
-    horizon,
-    resolution="h"
+ev = ElectricVehicle(
+    vehicle_id=1,
+    capacity=100,
+    soc_min=0.7,
+    soc_max=0.9,
+    charging_power=7.0,
+    charging_efficiency=0.95
 )
 
-# to example with 2 offers
-min_lists = [ [0]*horizon, [5]*horizon ]
-max_lists = [ [10]*horizon, [15]*horizon ]
-offers = create_aggregated_offers(min_lists, max_lists)
 
-solution = schedule_offers(
-    offers, spot, reserve, activation, indicators
-)
+fo = ev.create_synthetic_flex_offer(tec_fo=True)
+fos = []
+fos.append(fo)
 
-df = run_evaluation(min_lists, max_lists, spot, reserve, activation, indicators)
-print(df)
+solution = optimize(fos)

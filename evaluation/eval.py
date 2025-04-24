@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from optimization.simulator import create_aggregated_offers
-from optimization.flexOfferOptimizer import schedule_offers
+from optimization.flexOfferOptimizer import optimize
 from config import config
 
 def compute_profit(solution, spot, reserve, activation):
@@ -38,7 +38,7 @@ def run_evaluation(min_lists, max_lists, spot, reserve, activation, indicators):
     4) return DataFrame with config + profit
     """
     offers = create_aggregated_offers(min_lists, max_lists)
-    sol    = schedule_offers(offers, spot, reserve, activation, indicators)
+    sol    = optimize(offers, spot, reserve, activation, indicators)
     profit = compute_profit(sol, spot, reserve, activation)
     row = {
         "mode": config.MODE,

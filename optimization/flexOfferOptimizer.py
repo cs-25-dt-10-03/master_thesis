@@ -12,7 +12,7 @@ import time
 from flexoffer_logic import Flexoffer, TimeSlice
 
 
-def schedule_offers(offers, spot_prices, reserve_prices, activation_prices, indicators):
+def optimize(offers: List[Flexoffer]) -> List[Flexoffer]:
     """
     Dynamically build LP alt efter config indstillinger.
     offers: list of AFOs
@@ -21,8 +21,12 @@ def schedule_offers(offers, spot_prices, reserve_prices, activation_prices, indi
     activation_prices: Dataframe: [HourDK, UpBalancingPriceDKK, DownBalancingPriceDKK]
     """
 
+    earliest_start = min(o.get_est() for o in offers)
+
     A = len(offers)
     T = max(len(o.get_profile()) for o in offers)
+
+    spot_prices, reserve_prices, activation_prices, indicators = load_and_prepare_prices(earliest_start, T, resolution=config.TIME_RESOLUTION)
 
     # PAD profiles så alle har længde T
     for o in offers:
