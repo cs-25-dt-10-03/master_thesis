@@ -27,7 +27,7 @@ def fetchEvData() -> List[pd.DataFrame]:
             ev_df['Passed Hours'] = ev_df['Passed Hours'].astype(float)
             ev_df['EV model'] = ev_df['EV model'].loc[0]
             ev_df = ev_df.loc[ev_df['EV model'] != 'no EV']
-            ev_df = ev_df.dropna(subset=['EV state'])
+            ev_df = ev_df.dropna(subset=['EV state', 'SoC'])
             ev_df.reset_index(drop=True, inplace=True)
             if not ev_df.empty:
                 dfs.append(ev_df)
