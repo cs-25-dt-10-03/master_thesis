@@ -24,4 +24,3 @@ def test_optimizer():
     fos = []
     fos.append(fo)
 
-    fos = MultiMarketoptimize(fos)

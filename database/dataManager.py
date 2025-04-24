@@ -2,6 +2,7 @@ import pandas as pd
 from typing import List
 import os
 from config import config
+import numpy as np
 
 
 def fetchEvData() -> List[pd.DataFrame]:
@@ -70,7 +71,6 @@ def loadSpotPriceData():
     if config.TIME_RESOLUTION == 3600:
         df = pd.read_csv(os.path.join(config.DATA_FILEPATH, "ElspotPrices.csv"), dtype="unicode", delimiter=",", skiprows=0)
     else:
-        print("Hiya papaya!")
         df = pd.read_csv(os.path.join(config.DATA_FILEPATH, "ElspotPrices_15min.csv"), dtype="unicode", delimiter=",", skiprows=0)
     df['HourDK'] = pd.to_datetime(df['HourDK'], errors='coerce')
     df['SpotPriceDKK'] = pd.to_numeric(df['SpotPriceDKK'], errors='coerce')
@@ -146,3 +146,46 @@ def fetch_Regulating_by_range(start_date, end_date):
     df_filtered.drop(columns=['HourUTC'], inplace=True)
     return df_filtered
 
+
+
+# --- Har lige lavet en data loader der sætter alle priser sammen. Gør det lidt nemmere for optimizeren ---
+
+def load_and_prepare_prices(spot_csv, mfrr_csv, act_csv, start_ts, horizon_slots, resolution):
+    """
+    Load spot and mFRR CSV, then slice exact horizon.
+    start_ts: pandas.Timestamp matching CSV index
+    horizon_slots: number of slots to simulate
+    resolution: pandas frequency string, e.g. 'H' for hourly
+    """
+
+    spot = pd.read_csv(spot_csv, parse_dates=['HourDK'], usecols=['HourDK', 'SpotPriceDKK'])
+    mfrr = pd.read_csv(mfrr_csv, parse_dates=['HourDK'], usecols=['HourDK', 'mFRR_UpPriceDKK', 'mFRR_DownPriceDKK'])
+    act = pd.read_csv(act_csv, parse_dates=['HourDK'], usecols=['HourDK', 'BalancingPowerPriceUpDKK', 'BalancingPowerPriceDownDKK'])
+
+    time_index = pd.date_range(start=start_ts, periods=horizon_slots, freq=resolution)
+
+    spot = spot.drop_duplicates(subset='HourDK')
+    mfrr = mfrr.drop_duplicates(subset='HourDK')
+    act = act.drop_duplicates(subset='HourDK')
+
+    print(spot.head())
+
+    spot.set_index('HourDK', inplace=True)
+    mfrr.set_index('HourDK', inplace=True)
+    act.set_index('HourDK', inplace=True)
+
+    spot_slice = spot.reindex(time_index)
+    mfrr_slice = mfrr.reindex(time_index)
+    act_slice = act.reindex(time_index)
+
+    print(spot_slice.head())
+
+    spot_prices = spot_slice['SpotPriceDKK']
+    reserve_prices = mfrr_slice[['mFRR_UpPriceDKK', 'mFRR_DownPriceDKK']]
+    activation_prices = act_slice[['BalancingPowerPriceUpDKK', 'BalancingPowerPriceDownDKK']]
+
+    delta_up = (activation_prices['BalancingPowerPriceUpDKK'] > np.nanmean(activation_prices['BalancingPowerPriceUpDKK'])).astype(int)
+    delta_dn = (activation_prices['BalancingPowerPriceDownDKK'] > np.nanmean(activation_prices['BalancingPowerPriceDownDKK'])).astype(int)
+    indicators = list(zip(delta_up, delta_dn))
+
+    return spot_prices, reserve_prices, activation_prices, indicators
