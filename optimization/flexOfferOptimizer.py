@@ -21,17 +21,24 @@ def optimize(offers: List[Flexoffer]) -> List[Flexoffer]:
     activation_prices: Dataframe: [HourDK, UpBalancingPriceDKK, DownBalancingPriceDKK]
     """
 
-    earliest_start = min(o.get_est() for o in offers)
-
+    earliest_start = min(fo.get_est() for fo in offers)
+    res = config.TIME_RESOLUTION
+    offsets = [int((fo.get_est() - earliest_start) / res) for fo in offers]
+    T = max(offset + len(fo.get_profile()) for offset, fo in zip(offsets, offers))
     A = len(offers)
-    T = max(len(o.get_profile()) for o in offers)
+
+
+    for offset, fo in zip(offsets, offers):
+        prof = fo.get_profile()
+        pre_pad = [TimeSlice(0,0)] * offset
+        post_pad = [TimeSlice(0,0)] * (T - offset - len(prof))
+        prof[:0] = pre_pad
+        prof.extend(post_pad)
+    
+
+
 
     spot_prices, reserve_prices, activation_prices, indicators = load_and_prepare_prices(earliest_start, T, resolution=config.TIME_RESOLUTION)
-
-    # PAD profiles så alle har længde T
-    for o in offers:
-        prof = o.get_profile()
-        prof.extend([TimeSlice(0,0)] * (T - len(prof)))
 
     def build_and_solve(use_spot, use_reserve, use_activation, fixed_p=None):
         prob = pulp.LpProblem("scheduling", pulp.LpMaximize)
