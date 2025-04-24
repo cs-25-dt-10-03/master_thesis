@@ -53,14 +53,15 @@ def test_cluster_and_aggregate_flexoffers_mock_data(fos, n_clusters=3):
 
 
 def test_cluster_and_aggregate_flexoffers():
-    dt1 = (datetime.datetime(2030, 6, 30, 0, 0) - datetime.datetime(2020, 1, 1, 0, 0)).total_seconds() / CONFIG.TIME_RESOLUTION
-    dt2 = (datetime.datetime(2031, 6, 30, 0, 0) - datetime.datetime(2020, 1, 1, 0, 0)).total_seconds() / CONFIG.TIME_RESOLUTION
+    dt1 = (datetime.datetime(2023, 12, 31, 0, 0) - datetime.datetime(2020, 1, 1, 0, 0)).total_seconds() / CONFIG.TIME_RESOLUTION
+    dt2 = (datetime.datetime(2024, 12, 31, 0, 0) - datetime.datetime(2020, 1, 1, 0, 0)).total_seconds() / CONFIG.TIME_RESOLUTION
     fos = fo_parser(dt1, dt2)
+    print("Len of fos: ", len(fos))
     afo = cluster_and_aggregate_flexoffers(fos, 5)
 
+    afo = optimize(afo)
     print("\n=== Aggregated FlexOffers ===\n")
     for i, fo in enumerate(afo):
-        fo = optimize(fo)
         print(f"Aggregated FlexOffer {i+1}:")
         fo.print_flexoffer()
         print("\n" + "="*50 + "\n")
