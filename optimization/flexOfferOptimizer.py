@@ -112,6 +112,8 @@ def optimize(offers: List[Flexoffer]) -> List[Flexoffer]:
                 sol["s_up"][a]  = { t: pulp.value(s_up[(a,t)])  for t in range(T) }
                 sol["s_dn"][a]  = { t: pulp.value(s_dn[(a,t)])  for t in range(T) }
 
+
+
         for a, fo in enumerate(offers):
             alloc = [sol["p"][a][t] for t in range(T)]
             fo.set_scheduled_allocation(alloc)
@@ -166,6 +168,7 @@ def pad_profiles_to_common_timeline(offers: List[Flexoffer]) -> int:
     Pads all FlexOffers in-place so their profiles align on a common time axis.
     This ensures no index errors during optimization.
 
+    offers: List of flexOffers
     Returns:
         T (int): common time length
     """

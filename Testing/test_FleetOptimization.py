@@ -8,8 +8,6 @@ import pytest
 from config import config
 import pandas as pd
 from flexoffer_logic import Flexoffer, TimeSlice
-from optimization.simulator import create_aggregated_offers
-from evaluation.eval import run_evaluation
 from optimization.flexOfferOptimizer import optimize
 from database.dataManager import load_and_prepare_prices
 import pandas as pd
