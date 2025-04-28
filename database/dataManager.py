@@ -1,4 +1,5 @@
 import pandas as pd
+import datetime
 from typing import List
 import os
 from config import config
@@ -66,7 +67,6 @@ def getEvAtDatetime(datetime_value: int) -> List[pd.DataFrame]:
     return None
 
 
-
 def loadSpotPriceData():
     if config.TIME_RESOLUTION == 3600:
         df = pd.read_csv(os.path.join(config.DATA_FILEPATH, "ElspotPrices.csv"), dtype="unicode", delimiter=",", skiprows=0)
@@ -91,7 +91,7 @@ def get_prices_in_range(start_timestamp, end_timestamp):
     df = loadSpotPriceData()
     start_datetime = pd.to_datetime(start_timestamp, unit="s")
     end_datetime = pd.to_datetime(end_timestamp, unit="s")
-    print(f"Starttt:DARE TIME ::: { start_datetime}, \n {end_datetime}")
+    print(f"Starttt:DARE TIME ::: {start_datetime}, \n {end_datetime}")
     mask = (df['HourDK'] >= start_datetime) & (df['HourDK'] <= end_datetime)
     filtered_df = df.loc[mask]
     filtered_df = filtered_df.set_index('HourDK')
@@ -147,9 +147,7 @@ def fetch_Regulating_by_range(start_date, end_date):
     return df_filtered
 
 
-
 # --- Har lige lavet en data loader der læser alle priser sammen. Gør det lidt nemmere for optimizeren ---
-
 def load_and_prepare_prices(start_ts, horizon_slots, resolution):
     """
     Load spot and mFRR CSV, then slice exact horizon.
@@ -166,7 +164,6 @@ def load_and_prepare_prices(start_ts, horizon_slots, resolution):
         spot = pd.read_csv(os.path.join(config.DATA_FILEPATH, "Elspotprices_15min.csv"), parse_dates=['HourDK'], usecols=['HourDK', 'SpotPriceDKK'])
         mfrr = pd.read_csv(os.path.join(config.DATA_FILEPATH, "mFRR_15min.csv"), parse_dates=['HourDK'], usecols=['HourDK', 'mFRR_UpPriceDKK', 'mFRR_DownPriceDKK'])
         act = pd.read_csv(os.path.join(config.DATA_FILEPATH, "Regulating_15min.csv"), parse_dates=['HourDK'], usecols=['HourDK', 'BalancingPowerPriceUpDKK', 'BalancingPowerPriceDownDKK'])
-
 
     spot = spot.drop_duplicates(subset='HourDK')
     mfrr = mfrr.drop_duplicates(subset='HourDK')
@@ -198,3 +195,11 @@ def load_and_prepare_prices(start_ts, horizon_slots, resolution):
     indicators = list(zip(delta_up, delta_dn))
 
     return spot_prices, reserve_prices, activation_prices, indicators
+
+
+def convertYearInfo(df: List[pd.DataFrame]):
+    for element in df:
+        element['Timestamp'] = pd.to_datetime(element['Timestamp'], format="%b %d, %Y, %I:%M:%S %p")
+        element['Timestamp'] = [time.replace(year=2024) for time in element['Timestamp']]
+        element['Passed Hours'] = [round((time - datetime.datetime(2020, 1, 1, 0, 0)).total_seconds() / config.TIME_RESOLUTION) for time in element['Timestamp']]
+    return

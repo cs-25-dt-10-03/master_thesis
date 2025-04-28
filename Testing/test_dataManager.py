@@ -1,6 +1,6 @@
 import datetime
 
-from database.dataManager import fetch_mFRR_by_range, getEvAtDatetime, getEVsInRange, fetchEvModels
+from database.dataManager import fetch_mFRR_by_range, getEvAtDatetime, getEVsInRange, fetchEvModels, convertYearInfo
 from config import config
 
 CONFIG = config()
@@ -29,3 +29,13 @@ def test_getEVsInRange():
 
 def test_fetchEvModels():
     fetchEvModels()
+
+
+def test_convertYearInfo():
+    dt1 = (datetime.datetime(2028, 11, 19, 0, 0) - datetime.datetime(2020, 1, 1, 0, 0)).total_seconds() / CONFIG.TIME_RESOLUTION
+    dt2 = (datetime.datetime(2029, 11, 21, 0, 0) - datetime.datetime(2020, 1, 1, 0, 0)).total_seconds() / CONFIG.TIME_RESOLUTION
+    result = getEVsInRange(dt1, dt2)
+    print("Len is: ", len(result))
+    print("First is: ", result[0])
+    convertYearInfo(result)
+    print(result[0])
