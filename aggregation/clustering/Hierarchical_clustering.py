@@ -52,7 +52,7 @@ def aggregate_clusters(clustered_offers):
                 aggregated_offers.append(afo)
             else:
                 aggregated_offers.append(afo)
-                print("⚠️ Warning: Cluster did not meet market compliance. Adjusting...")
+                print("Warning: Cluster did not meet market compliance. Adjusting...")
         if dfos:
             afo = aggnto1(dfos, 4)
             aggregated_offers.append(afo)

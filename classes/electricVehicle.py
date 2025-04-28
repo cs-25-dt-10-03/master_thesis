@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import math
+import pandas as pd
 from typing import Tuple
 import numpy as np
 from helpers import dt_to_unix
@@ -34,25 +35,90 @@ class ElectricVehicle:
         sampled_soc = beta.rvs(alpha, beta_param)
         return 0.2 + (self.soc_max - self.soc_min) * sampled_soc
 
+    def sample_day_profile(self, day_start):
+        """
+        Samples whether EV is active today and if yes, generates arrival/departure/SoC.
+        day_start: datetime
+        """
+        # 80% chance weekday, 50% chance weekend
+        is_weekend = day_start.weekday() >= 5
+        active_prob = 0.8 if not is_weekend else 0.5
+        if np.random.rand() > active_prob:
+            return None  # EV is inactive today
+
+        # Arrival time (normal distribution centered 17:00)
+        arrival_hour = np.clip(np.random.normal(17, 2), 12, 22)
+        arrival = day_start + timedelta(hours=arrival_hour)
+
+        # Departure time (normal distribution centered 7:00 next day)
+        departure_hour = np.clip(np.random.normal(7, 1.5), 5, 10)
+        departure = day_start + timedelta(days=1, hours=departure_hour)
+
+        # State of charge at arrival (beta distribution)
+        arrival_soc = np.random.beta(2, 5) * 0.8  # between 0 and 0.8
+        arrival_soc = np.clip(arrival_soc, 0.1, 0.8)
+
+        return arrival, departure, arrival_soc
+
+    def create_flex_offer(self, arrival, departure, arrival_soc, target_soc=0.9, resolution_seconds=3600):
+        """
+        Creates a FlexOffer from a sampled day profile.
+        arrival: datetime
+        departure: datetime
+        arrival_soc: float between 0 and 1
+        """
+        needed_energy = (target_soc - arrival_soc) * self.capacity
+        if needed_energy <= 0:
+            return None  # no charging needed
+
+        charging_power = self.charging_power * self.efficiency
+        hours_needed = needed_energy / charging_power
+        slots_needed = int(np.ceil(hours_needed * 3600 / resolution_seconds))
+
+        start = arrival
+        end = departure
+
+        duration = int((end - start).total_seconds() // resolution_seconds)
+        if duration <= 0:
+            return None
+
+        max_energy_per_slot = charging_power * (resolution_seconds / 3600)
+
+        profile = [TimeSlice(0, max_energy_per_slot) for _ in range(duration)]
+
+        return Flexoffer(
+            offer_id=self.vehicle_id,
+            earliest_start=dt_to_unix(start),
+            latest_start=dt_to_unix(end) - slots_needed * resolution_seconds,
+            end_time=dt_to_unix(end),
+            profile=profile,
+            duration=duration,
+            min_overall_alloc=needed_energy * 0.95,  # some flexibility
+            max_overall_alloc=needed_energy * 1.05
+        )
+
     def sample_start_times(self) -> Tuple[datetime, datetime]:
         arrival_mu = np.log(18)
         arrival_sigma = 0.1
 
-        arrival_hour = int(lognorm.rvs(s=arrival_sigma, scale=np.exp(arrival_mu)))
-        if arrival_hour >= 24:
-            arrival_hour = 23
-        charging_window_start = datetime.now().replace(year=2024, hour=arrival_hour, minute=0, second=0, microsecond=0)
-
         dep_mu = np.log(8)
         dep_sigma = 0.1
 
+        arrival_hour = int(lognorm.rvs(s=arrival_sigma, scale=np.exp(arrival_mu)))
+        if arrival_hour >= 24:
+            arrival_hour = 23
+
         departure_hour = int(lognorm.rvs(s=dep_sigma, scale=np.exp(dep_mu)))
-        charging_window_end = datetime.now().replace(year=2024, hour=departure_hour, minute=0, second=0, microsecond=0)
+
+        start_day = pd.to_datetime(config.SIMULATION_START_DATE)
+
+        charging_window_start = start_day.replace(hour=arrival_hour, minute=0, second=0, microsecond=0)
+        charging_window_end = start_day.replace(hour=departure_hour, minute=0, second=0, microsecond=0)
 
         if departure_hour < arrival_hour:
             charging_window_end += timedelta(days=1)
 
-        return charging_window_start, charging_window_end
+            return charging_window_start, charging_window_end
 
     def create_flexoffer(self, start, stop) -> Flexoffer:
         earliest_start = datetime(2020, 1, 1, 0, 0, 0) + timedelta(hours=start)

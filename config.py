@@ -16,6 +16,7 @@ class config:
 
     # Simulations
     NUM_EVS = _config_data.get("NUM_EVS", 1000)
+    NUM_CLUSTERS = 5
     SIMULATION_DAYS = _config_data.get("SIMULATION_DAYS", 30)
     SIMULATION_START_DATE = _config_data.get("SIMULATION_START_DATE", "2025-03-01")
 
@@ -23,7 +24,6 @@ class config:
     TIME_RESOLUTION = _config_data.get("TIME_RESOLUTION", 3600)
     MIN_BID_SIZE = _config_data.get("MIN_BID_SIZE", 100)
     REQUIRE_UNIFORM = _config_data.get("REQUIRE_UNIFORM", 0)
-    MIN_BID_SIZE = _config_data.get("MIN_BID_SIZE", 1000)
 
 
     PENALTY = 1000
