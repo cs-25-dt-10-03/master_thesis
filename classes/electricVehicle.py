@@ -40,7 +40,7 @@ class ElectricVehicle:
 
         arrival_hour = int(lognorm.rvs(s=arrival_sigma, scale=np.exp(arrival_mu)))
         if arrival_hour >= 24:
-            arrival_hour = 23    
+            arrival_hour = 23
         charging_window_start = datetime.now().replace(year=2024, hour=arrival_hour, minute=0, second=0, microsecond=0)
 
         dep_mu = np.log(8)

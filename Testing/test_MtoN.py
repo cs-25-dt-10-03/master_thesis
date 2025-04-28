@@ -57,11 +57,10 @@ def test_cluster_and_aggregate_flexoffers():
     dt2 = (datetime.datetime(2024, 12, 31, 0, 0) - datetime.datetime(2020, 1, 1, 0, 0)).total_seconds() / CONFIG.TIME_RESOLUTION
     fos = fo_parser(dt1, dt2)
     print("Len of fos: ", len(fos))
-    afo = cluster_and_aggregate_flexoffers(fos, 5)
+    afo = cluster_and_aggregate_flexoffers(fos, 100)
 
     optimize(afo)
     print("\n=== Aggregated FlexOffers ===\n")
     for i, fo in enumerate(afo):
         print(f"Aggregated FlexOffer {i+1}:")
         fo.print_flexoffer()
-        print("\n" + "="*50 + "\n")
