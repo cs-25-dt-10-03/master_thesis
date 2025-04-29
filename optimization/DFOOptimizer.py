@@ -1,9 +1,10 @@
 from pulp import LpProblem, LpMaximize, LpMinimize, LpVariable, lpSum, LpAffineExpression
-from typing import List
+from typing import List, Tuple, Dict
 from database.dataManager import get_price_at_datetime, fetch_mFRR_by_range
 from config import config
-from flexoffer_logic import DFO, findOrInterpolatePoints, DependencyPolygon, Point
+from flexoffer_logic import DFO, findOrInterpolatePoints, padDFOsToCommonTimeline, DependencyPolygon, Point
 import pandas as pd
+import pulp
 
 def get_cost_array_for_dfo(dfo) -> list[float]:
     num_timesteps = len(dfo.polygons)
@@ -93,8 +94,8 @@ def DFO_MultiMarketOptimization(dfo: DFO) -> pd.DataFrame:
 
     # Fetch mFRR prices for the given time range
     prices_df = fetch_mFRR_by_range(dfo.get_est(), dfo.get_et())
-    up_prices = prices_df['mFRR_UpPriceDKK'].str.replace(',', '.').astype(float).tolist()
-    down_prices = prices_df['mFRR_DownPriceDKK'].str.replace(',', '.').astype(float).tolist()
+    up_prices = pd.to_numeric(prices_df['mFRR_UpPriceDKK'], errors='coerce').fillna(0).tolist()
+    down_prices = pd.to_numeric(prices_df['mFRR_DownPriceDKK'], errors='coerce').fillna(0).tolist()
 
     # Ensure length matches
     if len(up_prices) < num_timesteps or len(down_prices) < num_timesteps:
@@ -181,3 +182,159 @@ def DFO_MultiMarketOptimization(dfo: DFO) -> pd.DataFrame:
     df.to_csv("evaluation/results/dfo_multimarket_results.csv", index=False)
 
     return df
+
+
+def optimize_dfos(dfos: List[DFO]):
+    """
+    🧠 Optimizes DFOs across spot, reserve, and activation markets, based on config settings.
+    Dynamically build LP alt efter config indstillinger.
+    offers: list of (aggregated) DFOs
+    spot_prices: Dataframe: [HourDK, SpotPriceDKK]
+    reserve_prices: Dataframe: [HourDK, mFRR_UpPriceDKK, mFRR_DownPriceDKK]
+    activation_prices: Dataframe: [HourDK, UpBalancingPriceDKK, DownBalancingPriceDKK]
+    """
+
+    # Align DFOs to a common timeline
+    padded_dfos, T = padDFOsToCommonTimeline(dfos)
+    A = len(padded_dfos)
+    arliest_start = min(dfo.get_est() for dfo in padded_dfos)
+
+    # Load price data
+    spot_prices, reserve_prices, activation_prices, indicators = load_and_prepare_prices(earliest_start, T, resolution=config.TIME_RESOLUTION)
+
+    def build_and_solve(use_spot, use_reserve, use_activation, fixed_p=None):
+        prob = LpProblem("DFO_scheduling", LpMaximize)
+
+        # Decision variables
+        p_t = {(a, t): LpVariable(f"p_{a}_{t}", lowBound=0) for a in range(A) for t in range(T)} if use_spot else None
+        pr_up = {(a, t): LpVariable(f"pr_up_{a}_{t}", lowBound=0) for a in range(A) for t in range(T)} if use_reserve else None
+        pr_dn = {(a, t): LpVariable(f"pr_dn_{a}_{t}", lowBound=0) for a in range(A) for t in range(T)} if use_reserve else None
+        pb_up = {(a, t): LpVariable(f"pb_up_{a}_{t}", lowBound=0) for a in range(A) for t in range(T)} if use_activation else None
+        pb_dn = {(a, t): LpVariable(f"pb_dn_{a}_{t}", lowBound=0) for a in range(A) for t in range(T)} if use_activation else None
+        s_up = {(a, t): LpVariable(f"s_up_{a}_{t}", lowBound=0) for a in range(A) for t in range(T)} if use_activation else None
+        s_dn = {(a, t): LpVariable(f"s_dn_{a}_{t}", lowBound=0) for a in range(A) for t in range(T)} if use_activation else None
+
+        # Objective function
+        obj = []
+        for t in range(T):
+            if use_spot:
+                spot = spot_prices.iloc[t]
+            if use_reserve:
+                r_up, r_dn = reserve_prices.iloc[t]
+            if use_activation:
+                b_up, b_dn = activation_prices.iloc[t]
+
+            for a in range(A):
+                if use_reserve:
+                    obj.append(r_up * pr_up[(a, t)] + r_dn * pr_dn[(a, t)])
+                if use_activation:
+                    obj.append(b_up * pb_up[(a, t)] + b_dn * pb_dn[(a, t)])
+                if use_spot:
+                    dt = config.TIME_RESOLUTION / 3600.0
+                    obj.append(-spot * p_t[(a, t)] * dt)
+                if use_activation:
+                    obj.append(- config.PENALTY * (s_up[(a, t)] + s_dn[(a, t)]))
+
+        prob += lpSum(obj)
+
+        # Constraints
+        for a in range(A):
+            cumulative_energy = LpAffineExpression() # 🧠 IMPORTANT: make cumulative_energy a pulp symbolic expression
+            for t in range(T):
+                polygon = padded_dfos[a].polygons[t]
+                points = polygon.points
+
+                # Interpolation constraints if polygon has multiple segments
+                if len(points) < 4:
+                    energy_min = points[0].y
+                    energy_max = points[1].y
+                else:
+                    for k in range(1, len(points) - 2, 2):
+                        prev_min = points[k - 1]
+                        prev_max = points[k]
+                        next_min = points[k + 1]
+                        next_max = points[k + 2]
+
+                        if next_min.x == prev_min.x or next_max.x == prev_max.x:
+                            continue
+
+                        energy_min = prev_min.y + ((next_min.y - prev_min.y) / (next_min.x - prev_min.x)) * (cumulative_energy - prev_min.x)
+                        energy_max = prev_max.y + ((next_max.y - prev_max.y) / (next_max.x - prev_max.x)) * (cumulative_energy - prev_max.x)
+                        break
+
+                if use_spot:
+                    prob += p_t[(a, t)] >= energy_min, f"min_energy_{a}_{t}"
+                    prob += p_t[(a, t)] <= energy_max, f"max_energy_{a}_{t}"
+
+                if use_reserve:
+                    if use_spot:
+                        prob += pr_up[(a, t)] <= p_t[(a, t)], f"r_up_limit_{a}_{t}"
+                        prob += pr_dn[(a, t)] <= energy_max - p_t[(a, t)], f"r_dn_limit_{a}_{t}"
+                    else:
+                        prob += pr_up[(a, t)] <= energy_max, f"r_up_max_{a}_{t}"
+                        prob += pr_dn[(a, t)] <= energy_max, f"r_dn_max_{a}_{t}"
+
+                if use_activation:
+                    delta_up, delta_dn = indicators[t]
+                    prob += pb_up[(a, t)] + s_up[(a, t)] >= pr_up[(a, t)] * delta_up
+                    prob += pb_dn[(a, t)] + s_dn[(a, t)] >= pr_dn[(a, t)] * delta_dn
+
+                if use_spot:
+                    cumulative_energy += p_t[(a, t)]
+
+        # Solve
+        prob.solve(pulp.PULP_CBC_CMD(msg=False))
+
+        # --- Extract solution ---
+        solutions = {"p": {}, "pr_up": {}, "pr_dn": {}, "pb_up": {}, "pb_dn": {}, "s_up": {}, "s_dn": {}}
+        for a in range(A):
+            if use_spot:
+                solutions["p"][a] = {t: pulp.value(p_t[(a, t)]) for t in range(T)}
+            if use_reserve:
+                solutions["pr_up"][a] = {t: pulp.value(pr_up[(a, t)]) for t in range(T)}
+                solutions["pr_dn"][a] = {t: pulp.value(pr_dn[(a, t)]) for t in range(T)}
+            if use_activation:
+                solutions["pb_up"][a] = {t: pulp.value(pb_up[(a, t)]) for t in range(T)}
+                solutions["pb_dn"][a] = {t: pulp.value(pb_dn[(a, t)]) for t in range(T)}
+                solutions["s_up"][a] = {t: pulp.value(s_up[(a, t)]) for t in range(T)}
+                solutions["s_dn"][a] = {t: pulp.value(s_dn[(a, t)]) for t in range(T)}
+
+        # Set allocations back to DFOs
+        for a, dfo in enumerate(padded_dfos):
+            if use_spot:
+                alloc = [solutions["p"][a][t] for t in range(T)]
+                dfo.set_scheduled_allocation(alloc)
+
+                # Determine scheduled start time
+                try:
+                    first_active = next(t for t, v in enumerate(alloc) if v > 1e-6)
+                except StopIteration:
+                    first_active = 0
+                dfo.set_scheduled_start_time(earliest_start + first_active * config.TIME_RESOLUTION)
+
+        return solutions
+
+    # Joint vs Sequential optimization
+    if config.MODE == "joint":
+        return build_and_solve(
+            use_spot=config.RUN_SPOT,
+            use_reserve=config.RUN_RESERVE,
+            use_activation=config.RUN_ACTIVATION
+        )
+    elif config.MODE == "sequential":
+        sol1 = build_and_solve(
+            use_spot=config.RUN_SPOT,
+            use_reserve=config.RUN_RESERVE,
+            use_activation=False
+        )
+        sol2 = build_and_solve(
+            use_spot=False,
+            use_reserve=config.RUN_RESERVE,
+            use_activation=config.RUN_ACTIVATION
+        )
+        merged = sol1.copy()
+        for key in ["pr_up", "pr_dn", "pb_up", "pb_dn", "s_up", "s_dn"]:
+            merged[key] = sol2[key]
+        return merged
+    else:
+        raise ValueError("Unknown MODE selected in config")

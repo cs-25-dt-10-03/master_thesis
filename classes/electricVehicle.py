@@ -61,11 +61,10 @@ class ElectricVehicle:
         departure = day_start + timedelta(days=1, hours=departure_hour)
 
         # State of charge at arrival (beta distribution)
-        arrival_soc = np.random.beta(2,5) * 0.8  # between 0 and 0.8
+        arrival_soc = np.random.beta(2, 5) * 0.8  # between 0 and 0.8
         arrival_soc = np.clip(arrival_soc, 0.1, 0.8)
 
         return arrival, departure, arrival_soc
-
 
     def create_flex_offer(self, arrival, departure, arrival_soc, target_soc=0.9, resolution_seconds=3600):
         """
@@ -92,7 +91,7 @@ class ElectricVehicle:
         max_energy_per_slot = charging_power * (resolution_seconds / 3600)
 
         profile = [TimeSlice(0, max_energy_per_slot) for _ in range(duration)]
-        
+
         return Flexoffer(
             offer_id=self.vehicle_id,
             earliest_start=dt_to_unix(start),
@@ -113,14 +112,14 @@ class ElectricVehicle:
 
         arrival_hour = int(lognorm.rvs(s=arrival_sigma, scale=np.exp(arrival_mu)))
         if arrival_hour >= 24:
-            arrival_hour = 23    
+            arrival_hour = 23
 
         departure_hour = int(lognorm.rvs(s=dep_sigma, scale=np.exp(dep_mu)))
 
         start_day = pd.to_datetime(config.SIMULATION_START_DATE)
 
         charging_window_start = start_day.replace(hour=arrival_hour, minute=0, second=0, microsecond=0)
-        charging_window_end   = start_day.replace(hour=departure_hour, minute=0, second=0, microsecond=0)
+        charging_window_end = start_day.replace(hour=departure_hour, minute=0, second=0, microsecond=0)
 
         if departure_hour < arrival_hour:
             charging_window_end += timedelta(days=1)
