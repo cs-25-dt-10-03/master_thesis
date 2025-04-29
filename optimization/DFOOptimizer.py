@@ -1,6 +1,6 @@
 from pulp import LpProblem, LpMaximize, LpMinimize, LpVariable, lpSum, LpAffineExpression
 from typing import List, Tuple, Dict
-from database.dataManager import get_price_at_datetime, fetch_mFRR_by_range
+from database.dataManager import  get_price_at_datetime, get_prices_in_range, fetch_mFRR_by_range, fetch_Regulating_by_range, load_and_prepare_prices
 from config import config
 from flexoffer_logic import DFO, findOrInterpolatePoints, padDFOsToCommonTimeline, DependencyPolygon, Point
 import pandas as pd
@@ -197,7 +197,7 @@ def optimize_dfos(dfos: List[DFO]):
     # Align DFOs to a common timeline
     padded_dfos, T = padDFOsToCommonTimeline(dfos)
     A = len(padded_dfos)
-    arliest_start = min(dfo.get_est() for dfo in padded_dfos)
+    earliest_start = min(dfo.get_est() for dfo in padded_dfos)
 
     # Load price data
     spot_prices, reserve_prices, activation_prices, indicators = load_and_prepare_prices(earliest_start, T, resolution=config.TIME_RESOLUTION)

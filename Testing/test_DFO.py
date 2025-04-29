@@ -2,7 +2,7 @@ import pytest
 from datetime import datetime, timedelta
 from flexoffer_logic import DFO, DependencyPolygon, Point, agg2to1, aggnto1, disagg1to2, disagg1toN, findOrInterpolatePoints
 from classes.electricVehicle import ElectricVehicle
-from optimization.DFOOptimizer import DFO_Optimization, DFO_MultiMarketOptimization
+from optimization.DFOOptimizer import DFO_Optimization, DFO_MultiMarketOptimization, optimize_dfos
 from aggregation.clustering.Hierarchical_clustering import extract_features, cluster_offers, cluster_and_aggregate_flexoffers
 
 @pytest.fixture
@@ -201,3 +201,34 @@ def test_DFO_MultiMarketOptimization(ev3, charging_window_start, duration):
 
     print("Multi-market optimization test passed.")
     print(results_df)
+
+
+def test_optimize_dfos(ev1, ev2, ev3, charging_window_start, duration):
+    """Tests the full multi-DFO optimization pipeline including joint timeline padding and multi-market solving."""
+
+    # Create a list of DFOs from different EVs
+    dfo1 = ev1.create_dfo(charging_window_start, duration, numsamples=4)
+    dfo2 = ev2.create_dfo(charging_window_start + timedelta(hours=1), duration, numsamples=4)
+    dfo3 = ev3.create_dfo(charging_window_start + timedelta(hours=2), duration, numsamples=4)
+    dfos = [dfo1, dfo2, dfo3]
+
+    # Run full optimization
+    sol = optimize_dfos(dfos)
+
+    # Check presence of key result fields
+    assert "p" in sol
+    assert isinstance(sol["p"], dict)
+
+    # Check allocations are set
+    for i, dfo in enumerate(dfos):
+        alloc = dfo.get_scheduled_allocation()
+        assert isinstance(alloc, list)
+        assert all(isinstance(val, float) or val is None for val in alloc)
+        assert any(val > 0.0 for val in alloc), f"DFO {i} has no energy allocated."
+
+    # Print for visual confirmation
+    for i, dfo in enumerate(dfos):
+        print(f"\nDFO {i} Allocation: {dfo.get_scheduled_allocation()}")
+        print(f"Start time: {datetime.fromtimestamp(dfo.get_scheduled_start_time())}")
+
+    print("✅ Full DFO optimization test passed.")
