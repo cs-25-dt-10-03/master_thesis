@@ -200,7 +200,10 @@ def load_and_prepare_prices(start_ts, horizon_slots, resolution):
     return spot_prices, reserve_prices, activation_prices, indicators
 
 
-def convertYearInfo(df: List[pd.DataFrame]):
+def convertYearInfo(df: List[pd.DataFrame]) -> None:
+    """
+    df bliver passed som reference, så den bliver ændret inplace
+    """
     for element in df:
         element['Timestamp'] = pd.to_datetime(element['Timestamp'], format="%b %d, %Y, %I:%M:%S %p")
         element['Timestamp'] = [time.replace(year=2024) for time in element['Timestamp']]
