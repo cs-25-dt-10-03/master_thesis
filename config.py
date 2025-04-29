@@ -18,7 +18,7 @@ class config:
     NUM_EVS = _config_data.get("NUM_EVS", 1000)
     NUM_CLUSTERS = 5
     SIMULATION_DAYS = _config_data.get("SIMULATION_DAYS", 30)
-    SIMULATION_START_DATE = _config_data.get("SIMULATION_START_DATE", "2025-03-01")
+    SIMULATION_START_DATE = _config_data.get("SIMULATION_START_DATE", "2024-03-01")
 
     # Market requirements
     TIME_RESOLUTION = _config_data.get("TIME_RESOLUTION", 3600)
@@ -36,3 +36,11 @@ class config:
     RUN_SPOT = True
     RUN_RESERVE = False
     RUN_ACTIVATION = False
+
+    @classmethod
+    def apply_override(cls, overrides):
+        for k, v in overrides.items():
+            if hasattr(cls, k):
+                setattr(cls, k, v)
+
+

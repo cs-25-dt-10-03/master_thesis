@@ -1,19 +1,20 @@
 import pandas as pd
 from classes.electricVehicle import ElectricVehicle
 import numpy as np
+from config import config
 
-def simulate_fleet(num_evs, start_date, simulation_days):
+def simulate_fleet(num_evs=config.NUM_EVS, start_date=config.SIMULATION_START_DATE, simulation_days=config.SIMULATION_DAYS):
     """
     Simulates a fleet of EVs over multiple days and generates FlexOffers.
     num_evs: number of evs given in config.py file
-    start_date: start date for simulation given in config.py file
-    simulation_days: number of days given in the config.py file
+    start_date: start date for simulatio
+    simulation_days: number of days
     """
     start_date = pd.to_datetime(start_date)
     fleet = []
     for i in range(num_evs):
-        ElectricVehicle(i, capacity_kWh=np.random.normal(60, 10),
-                          charging_power_kW=np.random.choice([7.2,11,22]))
+        ev = ElectricVehicle(i, capacity_kWh=np.random.normal(60, 10), charging_power_kW=np.random.choice([7.2,11,22]))
+        fleet.append(ev)
     
 
     offers = []

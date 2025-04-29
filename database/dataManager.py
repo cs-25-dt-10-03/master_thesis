@@ -1,6 +1,7 @@
 import pandas as pd
 from typing import List
 import os
+import datetime
 from config import config
 import numpy as np
 
@@ -172,7 +173,9 @@ def load_and_prepare_prices(start_ts, horizon_slots, resolution):
     mfrr = mfrr.drop_duplicates(subset='HourDK')
     act = act.drop_duplicates(subset='HourDK')
 
-    start_ts = pd.to_datetime(start_ts, unit="s")
+
+    # if not isinstance(start_ts, datetime.datetime):
+    start_ts = pd.to_datetime(start_ts)
     end_ts = start_ts + pd.to_timedelta(horizon_slots * resolution, unit="s")
 
     # print(spot.head())

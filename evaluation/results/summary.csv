@@ -1,0 +1,2 @@
+MODE,RUN_SPOT,RUN_RESERVE,RUN_ACTIVATION,runtime_scheduling,runtime_aggregation
+joint,True,False,False,-0.33350205421447754,-22.169898986816406

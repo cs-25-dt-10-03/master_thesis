@@ -2,38 +2,47 @@
 # Works with both FlexOffers and DFOs
 
 from evaluation.utils.plots import plot_results
+from evaluation.fleet_simulator import simulate_fleet
 import json
 from classes.electricVehicle import ElectricVehicle
 import os
 from aggregation.clustering.Hierarchical_clustering import cluster_and_aggregate_flexoffers
 from config import config
 import time
-from optimization.flexOfferOptimizer import optimize
+import pandas as pd
+from optimization.scheduler import schedule_offers
 
 RESULTS_DIR = "evaluation/results"
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
+def run_single_evaluation(spot, reserve, activation, indicators, scenario):
+    
+    # Override config with current scenario
+    config.apply_override(scenario)
 
-def run_single_evaluation(ev_list, spot, reserve, activation, indicators, scenario):
 
-    offers = [ev.create_synthetic_flexoffer(tec_fo=True) for ev in ev_list]
-    # 1: schedule offers
-
+    # 1: simulate fleet
+    offers = simulate_fleet(
+        num_evs=config.NUM_EVS,
+        start_date=config.SIMULATION_START_DATE,
+        simulation_days=config.SIMULATION_DAYS
+    )
+    # 2: aggregate offers
     start = time.time()
     AFOs = cluster_and_aggregate_flexoffers(offers, config.NUM_CLUSTERS)
     runtime_aggregation = start - time.time()
 
+    # 3: schedule offers
     start = time.time()
-    solution = optimize(AFOs)
+    solution = schedule_offers(AFOs, spot, reserve, activation, indicators)
     runtime_scheduling = start - time.time()
 
-    # 2: Compute profits and savings
-    profit = compute_profit(offers)
+    # 4: Compute profits and savings
+    profit = compute_profit(solution, spot, reserve, activation,)
     baseline_cost = compute_baseline(offers)
-
     savings = (profit / baseline_cost) * 100
 
-    # 4. Export each scheduled allocation + start time
+    # 5. Export each scheduled allocation + start time
     schedules = [{
         "offer": a,
         "start_time": offers[a].get_scheduled_start_time(),
@@ -54,67 +63,83 @@ def run_single_evaluation(ev_list, spot, reserve, activation, indicators, scenar
     }
 
 
-def evaluate_configurations(configurations, spot, reserve, activation, indicators):
+def evaluate_configurations(spot, reserve, activation, indicators):
 
-    ev_list = [
-        ElectricVehicle(vehicle_id=i, capacity=100, soc_min=0.7, soc_max=0.9, charging_power=7.0, charging_efficiency=0.95)
-        for i in range(config.NUM_EVS)
-    ]
+    out_dir = 'evaluation/results'
+    os.makedirs(out_dir, exist_ok=True)
+    scenarios = get_scenarios()
 
     results = []
 
-    for scenario in configurations:
-        res = run_single_evaluation(ev_list, spot, reserve, activation, indicators, scenario)
-        results.append({
-            "TIME_RESOLUTION": res["TIME_RESOLUTION"],
-            "SIMULATION_DAYS": res["SIMULATION_DAYS"],
-            "MODE": res["MODE"],
-            "SPOT": res["RUN_SPOT"],
-            "RESERVE": res["RUN_RESERVE"],
-            "ACTIVATION": res["RUN_ACTIVATION"],
-            "NUM_EVS": res["NUM_EVS"],
-            "savings": res["savings"],
-            "runtime": res["runtime"]})
+    for scenario in scenarios:
+        res = run_single_evaluation(spot, reserve, activation, indicators, scenario)
+        results.append(res)
+
+    # Save CSV summary
+    df = pd.DataFrame([
+        {
+            "MODE": r["scenario"]["MODE"],
+            "RUN_SPOT": r["scenario"]["RUN_SPOT"],
+            "RUN_RESERVE": r["scenario"]["RUN_RESERVE"],
+            "RUN_ACTIVATION": r["scenario"]["RUN_ACTIVATION"],
+            "runtime_scheduling": r["runtime_scheduling"],
+            "runtime_aggregation": r["runtime_aggregation"]
+        }
+        for r in results
+    ])
+    df.to_csv(os.path.join(out_dir, "summary.csv"), index=False)
+
+    # Save full detailed JSON
+    with open(os.path.join(out_dir, "details.json"), "w") as f:
+        json.dump(results, f, indent=2)
 
 
+def get_scenarios():
+    return [
+        {"MODE": "joint", "RUN_SPOT": True, "RUN_RESERVE": False, "RUN_ACTIVATION": False},
+    ]
 
-def compute_profit(solution, spot, reserve, activation):
-    #compute spot price
-    spot_price = 0
-    dt = config.TIME_RESOLUTION / 3600
-    for p_val in solution["p"].values():
-        for t, p in p_val.items():
-            spot_price += spot[t] * p * dt
 
-    # compute Reserve revenue (up and down)
-    reserve_revenue = sum(
-        reserve[t][0] * pr
-        for pr_vals in solution["pr_up"].values()
-        for t, pr in pr_vals.items()
-    ) + sum(
-        reserve[t][1] * pr
-        for pr_vals in solution["pr_dn"].values()
-        for t, pr in pr_vals.items()
+def compute_profit(solution, spot_prices, reserve_prices, activation_prices):
+    """
+    solution: dict with keys "p","pr_up","pr_dn","pb_up","pb_dn","s_up","s_dn"
+    spot_prices: pd.Series indexed by Timestamp (length T)
+    reserve_prices: pd.DataFrame [Up,Down] shape (T,2)
+    activation_prices: pd.DataFrame [Up,Down] shape (T,2)
+    """
+    dt = config.TIME_RESOLUTION / 3600.0
+
+    # --- Spot cost (negative revenue) ---
+    spot_rev = sum(
+        spot_prices.iloc[t]  * p_val[t] * dt
+        for p_val in solution["p"].values()
+        for t in p_val
     )
 
-    # compute Activation revenue (up and down)
-    activation_revenue = sum(
-        activation[t][0] * pb
-        for pb_vals in solution["pb_up"].values()
-        for t, pb in pb_vals.items()
-    ) + sum(
-        activation[t][1] * pb
-        for pb_vals in solution["pb_dn"].values()
-        for t, pb in pb_vals.items()
-    )
+    # --- Reserve revenue ---
+    res_up   = sum(reserve_prices.iloc[t,0] * pr
+                   for pr_vals in solution["pr_up"].values()
+                   for t,pr in pr_vals.items())
+    res_down = sum(reserve_prices.iloc[t,1] * pr
+                   for pr_vals in solution["pr_dn"].values()
+                   for t,pr in pr_vals.items())
 
-    # Penalty cost
-    penalty_cost = config.PENALTY * (
+    # --- Activation revenue ---
+    act_up   = sum(activation_prices.iloc[t,0] * pb
+                   for pb_vals in solution["pb_up"].values()
+                   for t,pb in pb_vals.items())
+    act_down = sum(activation_prices.iloc[t,1] * pb
+                   for pb_vals in solution["pb_dn"].values()
+                   for t,pb in pb_vals.items())
+
+    # --- Penalties ---
+    pen = config.PENALTY * (
         sum(s for s_vals in solution["s_up"].values() for s in s_vals.values()) +
         sum(s for s_vals in solution["s_dn"].values() for s in s_vals.values())
     )
 
-    return spot_price + reserve_revenue + activation_revenue - penalty_cost
+    # *Note spot_rev is positive energy‐costs, so net profit = (reserve+activation) − spot_rev − pen 
+    return (res_up + res_down + act_up + act_down) - spot_rev - pen
 
 
 

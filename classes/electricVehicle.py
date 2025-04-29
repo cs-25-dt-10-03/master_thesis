@@ -30,6 +30,12 @@ class ElectricVehicle:
         else:
             self.current_soc = soc
 
+    def __init__(self, vehicle_id, capacity_kWh, charging_power_kW, efficiency=0.95):
+        self.vehicle_id = vehicle_id
+        self.capacity = capacity_kWh
+        self.charging_power = charging_power_kW
+        self.efficiency = efficiency
+
     def sample_soc(self) -> float:
         alpha, beta_param = 2, 5
         sampled_soc = beta.rvs(alpha, beta_param)
