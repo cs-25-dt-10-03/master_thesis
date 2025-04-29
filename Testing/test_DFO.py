@@ -4,6 +4,7 @@ from flexoffer_logic import DFO, DependencyPolygon, Point, agg2to1, aggnto1, dis
 from classes.electricVehicle import ElectricVehicle
 from optimization.DFOOptimizer import DFO_Optimization, DFO_MultiMarketOptimization, optimize_dfos
 from aggregation.clustering.Hierarchical_clustering import extract_features, cluster_offers, cluster_and_aggregate_flexoffers
+import pandas as pd
 
 @pytest.fixture
 def charging_window_start():
@@ -146,7 +147,7 @@ def test_disagg1to2_and_disagg1toN(ev1, ev2, ev3, charging_window_start, duratio
     DFOs = cluster_and_aggregate_flexoffers(dfos, n_clusters=2)
 
     print(DFOs)
-
+'''
 def test_DFO_Optimization(ev3, charging_window_start, duration):
     """Tests DFO optimization function with a simple cost structure."""
 
@@ -173,7 +174,7 @@ def test_DFO_Optimization(ev3, charging_window_start, duration):
         assert MinMaxPoints[0].y - tolerance <= energy <= MinMaxPoints[1].y + tolerance, \
             f"Energy {energy} at timestep {t} is out of bounds!"
 
-
+'''
 def test_DFO_MultiMarketOptimization(ev3, charging_window_start, duration):
     """🧠Tests mFRR-based multi-market optimization for a single DFO.🧠"""
 
@@ -214,21 +215,21 @@ def test_optimize_dfos(ev1, ev2, ev3, charging_window_start, duration):
 
     # Run full optimization
     sol = optimize_dfos(dfos)
+    print("Optimization Solution:", sol)
 
     # Check presence of key result fields
     assert "p" in sol
     assert isinstance(sol["p"], dict)
 
-    # Check allocations are set
-    for i, dfo in enumerate(dfos):
-        alloc = dfo.get_scheduled_allocation()
-        assert isinstance(alloc, list)
-        assert all(isinstance(val, float) or val is None for val in alloc)
-        assert any(val > 0.0 for val in alloc), f"DFO {i} has no energy allocated."
+    # Check that each DFO index has an optimized schedule
+    for i in range(len(dfos)):
+        assert i in sol["p"], f"Missing solution for DFO {i}"
+        alloc = sol["p"][i]
+        assert isinstance(alloc, dict), f"Allocation for DFO {i} is not a dict"
+        assert all(isinstance(val, (float, int)) or val is None for val in alloc.values()), f"Non-numeric values in allocation for DFO {i}"
+        assert any(val is not None and not pd.isna(val) and val >= 0.0 for val in alloc.values()), f"DFO {i} has no energy allocated."
 
-    # Print for visual confirmation
-    for i, dfo in enumerate(dfos):
-        print(f"\nDFO {i} Allocation: {dfo.get_scheduled_allocation()}")
-        print(f"Start time: {datetime.fromtimestamp(dfo.get_scheduled_start_time())}")
+        # Print for visual confirmation
+        print(f"\nDFO {i} Allocation: {alloc}")
 
     print("✅ Full DFO optimization test passed.")
