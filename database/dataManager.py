@@ -55,9 +55,9 @@ def getEVsInRange(start_hour: int, end_hour: int) -> List[pd.DataFrame]:
     return result
 
 
-def getEvAtDatetime(datetime_value: int) -> List[pd.DataFrame]:
-    dfs = fetchEvData()
-    result: List[pd.DataFrame] = []
+def getEvAtDatetime(datetime_value: int) -> List[pd.DataFrame] | None:
+    dfs: List[pd.DataFrame] = fetchEvData()
+    result = []
 
     for ev in dfs:
         result.append(ev[round(ev['Passed Hours']) == datetime_value])
@@ -169,7 +169,6 @@ def load_and_prepare_prices(start_ts, horizon_slots, resolution):
     spot = spot.drop_duplicates(subset='HourDK')
     mfrr = mfrr.drop_duplicates(subset='HourDK')
     act = act.drop_duplicates(subset='HourDK')
-
 
     # if not isinstance(start_ts, datetime.datetime):
     start_ts = pd.to_datetime(start_ts)
