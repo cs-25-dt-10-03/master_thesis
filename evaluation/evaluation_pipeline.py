@@ -6,7 +6,7 @@ from evaluation.fleet_simulator import simulate_fleet
 import json
 from classes.electricVehicle import ElectricVehicle
 import os
-from aggregation.clustering.Hierarchical_clustering import cluster_and_aggregate_flexoffers, aggregate_rolling_horizon
+from aggregation.clustering.Hierarchical_clustering import cluster_and_aggregate_flexoffers, cluster_and_aggregate_dfos
 from config import config
 import time
 import pandas as pd
@@ -16,7 +16,7 @@ from optimization.scheduler import schedule_offers
 RESULTS_DIR = "evaluation/results"
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
-def run_single_evaluation(spot, reserve, activation, indicators, scenario):
+def run_single_evaluation(offers, spot, reserve, activation, indicators, scenario):
     
     # Override config with current scenario
     config.apply_override(scenario)
@@ -24,48 +24,38 @@ def run_single_evaluation(spot, reserve, activation, indicators, scenario):
     start_date=pd.to_datetime(config.SIMULATION_START_DATE)
     current=pd.to_datetime(config.SIMULATION_START_DATE)
 
-    simulation_days=config.SIMULATION_DAYS
-
-    # 1: simulate fleet
-    offers = simulate_fleet(
-        num_evs=config.NUM_EVS,
-        start_date=start_date,
-        simulation_days=simulation_days
-    )
     # 2: aggregate offers in a rolling window (we look at 24 hours at a time)
     end_date = start_date + timedelta(days=config.SIMULATION_DAYS)
+
     # we save the runtimes for each day and find the avg
     runtime_sch = []
     runtime_agg = []
+    revs = []
 
     while current < end_date:
 
         current_ts = datetime.timestamp(current)
-        end_date_ts = datetime.timestamp(end_date)
 
         window_h = 24
-        active = [fo for fo in offers if fo.get_est() >= current_ts and fo.get_est() < end_date_ts]  
+        active = [fo for fo in offers if fo.get_est() >= current_ts and fo.get_est() < current_ts + window_h * 3600]  
 
         if not active:
             return []
-        
-        print(type(active[0]))
 
         start_agg = time.time()
-        agg_offers  = cluster_and_aggregate_flexoffers(active)
+        agg_offers = cluster_and_aggregate_dfos(active)
         runtime_agg.append(time.time() - start_agg)
 
         start_sch = time.time()
         solution = schedule_offers(agg_offers)
         runtime_sch.append(time.time() - start_sch)
+        revs.append( compute_profit(solution, spot, reserve, activation, indicators))
 
         current += timedelta(hours = window_h)
         
-    mean_runtime_scheduling = sum(runtime_sch) / len(runtime_sch)
-    mean_runtime_aggregation = sum(runtime_agg) / len(runtime_agg)
-
-    # 4: Compute profits and savings
-    revs = compute_profit(solution, spot, reserve, activation, indicators)
+    mean_runtime_scheduling = round(sum(runtime_sch) / len(runtime_sch), 3)
+    mean_runtime_aggregation = round(sum(runtime_agg) / len(runtime_agg), 3)
+    mean_total_rev = round(sum([rev['total_rev'] for rev in revs]) / len(revs), 3)
 
     # 5. Export each scheduled allocation + start time
     schedules = [{
@@ -83,7 +73,7 @@ def run_single_evaluation(spot, reserve, activation, indicators, scenario):
         k: getattr(config, k)
             for k in ["TIME_RESOLUTION", "NUM_EVS", "PENALTY", "MODE", "RUN_SPOT", "RUN_RESERVE", "RUN_ACTIVATION", "SIMULATION_DAYS"]
         },
-        **revs
+        "total_rev": mean_total_rev,
     }
 
 
@@ -93,10 +83,20 @@ def evaluate_configurations(spot, reserve, activation, indicators):
     os.makedirs(out_dir, exist_ok=True)
     scenarios = get_scenarios()
 
+    start_date=pd.to_datetime(config.SIMULATION_START_DATE)
+    simulation_days=config.SIMULATION_DAYS
+
+    # 1: simulate fleet
+    offers = simulate_fleet(
+        num_evs=config.NUM_EVS,
+        start_date=start_date,
+        simulation_days=simulation_days
+    )
+
     results = []
 
     for scenario in scenarios:
-        res = run_single_evaluation(spot, reserve, activation, indicators, scenario)
+        res = run_single_evaluation(offers, spot, reserve, activation, indicators, scenario)
         results.append(res)
 
     # Save CSV summary
@@ -111,10 +111,6 @@ def evaluate_configurations(spot, reserve, activation, indicators):
             "runtime_scheduling": r["runtime_scheduling"],
             "runtime_aggregation": r["runtime_aggregation"],
             "total_rev": r["total_rev"],
-            "spot_rev": r["spot_rev"],
-            "res_rev": r["res_rev"],
-            "act_rev": r["act_rev"],
-            "penalty": r["penalty"]
         }
         for r in results
     ])
@@ -124,7 +120,11 @@ def evaluate_configurations(spot, reserve, activation, indicators):
 def get_scenarios():
     return [
         {"MODE": "joint", "RUN_SPOT": True, "RUN_RESERVE": False, "RUN_ACTIVATION": False},
-        #{"MODE": "sequential", "RUN_SPOT": True, "RUN_RESERVE": False, "RUN_ACTIVATION": False, "NUM_EVS": 10},
+        {"MODE": "sequential", "RUN_SPOT": True, "RUN_RESERVE": False, "RUN_ACTIVATION": False},
+        {"MODE": "joint", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": False},
+        {"MODE": "sequential", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": False},
+        {"MODE": "joint", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": True},
+        {"MODE": "sequential", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": True},
     ]
 
 
@@ -163,7 +163,7 @@ def compute_profit(sol, spot, reserve, activation, indicators):
                 s_dn_val = sol["s_dn"][a].get(t, 0.0)
                 pen_cost += config.PENALTY * (s_up_val + s_dn_val) * dt
 
-    total = spot_rev + res_rev + act_rev - pen_cost
+    total = res_rev + act_rev - spot_rev - pen_cost
     return {
         "spot_rev":  spot_rev,
         "res_rev":   res_rev,
