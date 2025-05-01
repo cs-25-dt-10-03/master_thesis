@@ -1,10 +1,11 @@
 from pulp import LpProblem, LpMaximize, LpMinimize, LpVariable, lpSum, LpAffineExpression
 from typing import List, Tuple, Dict
-from database.dataManager import get_price_at_datetime, fetch_mFRR_by_range
+from database.dataManager import  get_price_at_datetime, get_prices_in_range, fetch_mFRR_by_range, fetch_Regulating_by_range, load_and_prepare_prices
 from config import config
 from flexoffer_logic import DFO, findOrInterpolatePoints, padDFOsToCommonTimeline, DependencyPolygon, Point
 import pandas as pd
 import pulp
+from config import config
 
 def get_cost_array_for_dfo(dfo) -> list[float]:
     num_timesteps = len(dfo.polygons)
@@ -197,10 +198,12 @@ def optimize_dfos(dfos: List[DFO]):
     # Align DFOs to a common timeline
     padded_dfos, T = padDFOsToCommonTimeline(dfos)
     A = len(padded_dfos)
-    arliest_start = min(dfo.get_est() for dfo in padded_dfos)
+    earliest_start = min(dfo.get_est() for dfo in padded_dfos)
+    print(earliest_start)
+    pd_earliest_start = pd.to_datetime(earliest_start, unit='s')
 
     # Load price data
-    spot_prices, reserve_prices, activation_prices, indicators = load_and_prepare_prices(earliest_start, T, resolution=config.TIME_RESOLUTION)
+    spot_prices, reserve_prices, activation_prices, indicators = load_and_prepare_prices(pd_earliest_start, T, resolution=config.TIME_RESOLUTION)
 
     def build_and_solve(use_spot, use_reserve, use_activation, fixed_p=None):
         prob = LpProblem("DFO_scheduling", LpMaximize)
@@ -218,6 +221,8 @@ def optimize_dfos(dfos: List[DFO]):
         obj = []
         for t in range(T):
             if use_spot:
+                print("at T: ", t)
+                print("Spot price: ", spot_prices.iloc[t])
                 spot = spot_prices.iloc[t]
             if use_reserve:
                 r_up, r_dn = reserve_prices.iloc[t]
