@@ -10,12 +10,15 @@ def simulate_fleet(num_evs=config.NUM_EVS, start_date=config.SIMULATION_START_DA
     start_date: start date for simulatio
     simulation_days: number of days
     """
-    start_date = pd.to_datetime(start_date)
     fleet = []
     for i in range(num_evs):
-        ev = ElectricVehicle(i, capacity_kWh=np.random.normal(60, 10), charging_power_kW=np.random.choice([7.2,11,22]))
+        ev = ElectricVehicle(i, 
+                            capacity=np.random.normal(60, 10), 
+                            charging_power=np.random.choice([7.2,11,22]),
+                            soc_min=0.7,
+                            soc_max=0.9,
+                            charging_efficiency = 1)
         fleet.append(ev)
-    
 
     offers = []
     for day in pd.date_range(start=start_date, periods=simulation_days, freq='D'):

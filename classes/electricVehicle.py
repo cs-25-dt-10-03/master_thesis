@@ -71,7 +71,7 @@ class ElectricVehicle:
         if needed_energy <= 0:
             return None  # no charging needed
 
-        charging_power = self.charging_power * self.efficiency
+        charging_power = self.charging_power * self.charging_efficiency
         hours_needed = needed_energy / charging_power
         slots_needed = int(np.ceil(hours_needed * 3600 / resolution_seconds))
 

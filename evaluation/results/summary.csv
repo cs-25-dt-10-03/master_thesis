@@ -1,2 +1,2 @@
-MODE,RUN_SPOT,RUN_RESERVE,RUN_ACTIVATION,runtime_scheduling,runtime_aggregation
-joint,True,False,False,-0.33350205421447754,-22.169898986816406
+MODE,RUN_SPOT,RUN_RESERVE,RUN_ACTIVATION,NUM_EVS,TIME_RES,runtime_scheduling,runtime_aggregation,total_rev,spot_rev,res_rev,act_rev,penalty
+joint,True,False,False,10,3600,0.08038592338562012,0.002671957015991211,133765.47815238585,133765.47815238585,0.0,0.0,0.0

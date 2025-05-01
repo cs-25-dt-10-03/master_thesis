@@ -37,6 +37,17 @@ class config:
     RUN_RESERVE = False
     RUN_ACTIVATION = False
 
+    # Which algorithm to use: 'ward', 'kmeans', 'gmm', 'dbscan'
+    CLUSTER_METHOD = 'ward'
+
+    # Hyperparameters for each:
+    CLUSTER_PARAMS = {
+        'ward':   {'n_clusters': NUM_CLUSTERS},
+        'kmeans': {'n_clusters': NUM_CLUSTERS, 'random_state': 42},
+        'gmm':    {'n_components': NUM_CLUSTERS, 'covariance_type': 'full', 'random_state': 42},
+        'dbscan': {'eps': 0.5, 'min_samples': 5}
+    }
+
     @classmethod
     def apply_override(cls, overrides):
         for k, v in overrides.items():
