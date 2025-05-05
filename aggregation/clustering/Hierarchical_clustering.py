@@ -2,6 +2,7 @@ import numpy as np
 from scipy.cluster.hierarchy import dendrogram, linkage
 from sklearn.cluster import AgglomerativeClustering, KMeans, DBSCAN
 from sklearn.mixture import GaussianMixture
+from sklearn.preprocessing import StandardScaler
 from aggregation.clustering.metrics import evaluate_clustering
 from config import config
 from datetime import timedelta
@@ -17,24 +18,16 @@ def extract_features(offer):
     """
     Creates a feature vector for an offer:
       [earliest_ts, latest_ts, duration_secs, min_energy, total_energy]
-    """ 
+    """
     if isinstance(offer, Flexoffer):
-        return np.array([
-            offer.get_est(),
-            offer.get_lst(),
-            offer.get_min_overall_alloc(),
-        ])
+        return config.define_clustering_features_fo(offer)
     elif isinstance(offer, DFO):
-        return np.array([
-            offer.get_est(),
-            offer.get_lst(),
-            offer.min_total_energy,
-        ])
+        return config.define_clustering_features_dfo(offer)
     else:
         raise ValueError("Unknown offer type")
 
 
-def cluster_offers(offers, n_clusters=3):
+def cluster_offers(offers, n_clusters):
     """
     Clusters offers into up to n_clusters, normalizing features.
 
@@ -46,24 +39,25 @@ def cluster_offers(offers, n_clusters=3):
         list of clusters of length n_clusters and corresponding labels.
     """
     X = np.vstack([extract_features(o) for o in offers])
+    X = StandardScaler().fit_transform(X)
 
-    # Select clustering algorithm
     method = CLUSTER_METHOD.lower()
-    params = CLUSTER_PARAMS.get(method, {})
 
-    print(f'params:  {params}')
-
-    if method == 'ward':
-        model = AgglomerativeClustering(**params)
-    elif method == 'kmeans':
-        model = KMeans(**params)
+    params = dict(CLUSTER_PARAMS.get(method, {}))
+    if method == 'ward' or method == 'kmeans':
+        params['n_clusters'] = min(n_clusters, len(offers))
     elif method == 'gmm':
-        model = GaussianMixture(**params)
+        params['n_components'] = min(n_clusters, len(offers))
+    if method == 'ward':
+        model = AgglomerativeClustering(params)
+    elif method == 'kmeans':
+        model = KMeans(params)
+    elif method == 'gmm':
+        model = GaussianMixture(params)
     elif method == 'dbscan':
-        model = DBSCAN(**params)
+        model = DBSCAN(params)
     else:
         raise ValueError(f"Unsupported CLUSTER_METHOD: {CLUSTER_METHOD}")
-
 
     labels = model.fit_predict(X)
 
