@@ -44,19 +44,22 @@ def cluster_offers(offers, n_clusters):
 
     method = CLUSTER_METHOD.lower()
 
-    params = dict(CLUSTER_PARAMS.get(method, {}))
+    params = CLUSTER_PARAMS.get(method, {})
+
     if method == 'ward' or method == 'kmeans':
         params['n_clusters'] = min(n_clusters, len(offers))
     elif method == 'gmm':
         params['n_components'] = min(n_clusters, len(offers))
+
+
     if method == 'ward':
-        model = AgglomerativeClustering(params)
+        model = AgglomerativeClustering(**params)
     elif method == 'kmeans':
-        model = KMeans(params)
+        model = KMeans(**params)
     elif method == 'gmm':
-        model = GaussianMixture(params)
+        model = GaussianMixture(**params)
     elif method == 'dbscan':
-        model = DBSCAN(params)
+        model = DBSCAN(**params)
     else:
         raise ValueError(f"Unsupported CLUSTER_METHOD: {CLUSTER_METHOD}")
 
