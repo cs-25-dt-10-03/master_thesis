@@ -1,4 +1,5 @@
 import json
+import numpy as np
 import os
 import flexoffer_logic
 
@@ -26,11 +27,9 @@ class config:
     MIN_BID_SIZE = _config_data.get("MIN_BID_SIZE", 100)
     REQUIRE_UNIFORM = _config_data.get("REQUIRE_UNIFORM", 0)
 
-
     PENALTY = 1000
     RESOLUTION = "hourly" if TIME_RESOLUTION == 3600 else "15min"
     DATA_FILEPATH = os.path.join("..", "SmartCharging_2020_to_2032")
-
 
     # Market modules on/off
     MODE = "joint"
@@ -54,9 +53,23 @@ class config:
 
 
     @classmethod
+    def define_clustering_features_fo(cls, offer: flexoffer_logic.Flexoffer):
+        return np.array([
+            offer.get_est(),
+            offer.get_lst(),
+            offer.get_min_overall_alloc(),
+        ])
+
+    @classmethod
+    def define_clustering_features_dfo(cls, offer: flexoffer_logic.DFO):
+        return np.array([
+            offer.get_est(),
+            offer.get_lst(),
+            offer.min_total_energy,
+        ])
+
+    @classmethod
     def apply_override(cls, overrides):
         for k, v in overrides.items():
             if hasattr(cls, k):
                 setattr(cls, k, v)
-
-

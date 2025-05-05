@@ -3,6 +3,7 @@ from scipy.cluster.hierarchy import dendrogram, linkage
 from sklearn.cluster import AgglomerativeClustering, KMeans, DBSCAN
 from sklearn.mixture import GaussianMixture
 from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler
 from config import config
 from datetime import timedelta
 from aggregation.alignments import start_alignment_fast
@@ -18,21 +19,11 @@ def extract_features(offer):
     """
     Creates a feature vector for an offer:
       [earliest_ts, latest_ts, min_total_energy]
-    """ 
+    """
     if isinstance(offer, Flexoffer):
-        return np.array([
-            offer.get_est(),
-            offer.get_lst(),
-            offer.get_duration(),
-            offer.get_lst() - offer.get_est(),
-            offer.get_min_overall_alloc(),
-        ])
+        return config.define_clustering_features_fo(offer)
     elif isinstance(offer, DFO):
-        return np.array([
-            offer.get_est(),
-            offer.get_lst(),
-            offer.min_total_energy,
-        ])
+        return config.define_clustering_features_dfo(offer)
     else:
         raise ValueError("Unknown offer type")
 
@@ -59,16 +50,15 @@ def cluster_offers(offers, n_clusters):
     elif method == 'gmm':
         params['n_components'] = min(n_clusters, len(offers))
     if method == 'ward':
-        model = AgglomerativeClustering(**params)
+        model = AgglomerativeClustering(params)
     elif method == 'kmeans':
-        model = KMeans(**params)
+        model = KMeans(params)
     elif method == 'gmm':
-        model = GaussianMixture(**params)
+        model = GaussianMixture(params)
     elif method == 'dbscan':
-        model = DBSCAN(**params)
+        model = DBSCAN(params)
     else:
         raise ValueError(f"Unsupported CLUSTER_METHOD: {CLUSTER_METHOD}")
-
 
     labels = model.fit_predict(X)
 
