@@ -80,10 +80,12 @@ def aggregate_clusters(clustered_offers):
         flexoffers = [o for o in cluster if isinstance(o, Flexoffer)]
         dfos = [o for o in cluster if isinstance(o, DFO)]
 
-        if flexoffers:
+        print(cluster)
+
+        if flexoffers and config.TYPE == 'FO':
             afo = start_alignment_fast(flexoffers)
             aggregated_offers.append(afo)
-        if dfos:
+        if dfos and config.TYPE == 'DFO':
             afo = aggnto1(dfos, 4)
             aggregated_offers.append(afo)
     return aggregated_offers
@@ -107,6 +109,25 @@ def cluster_and_aggregate_flexoffers(offers, n_clusters=config.NUM_CLUSTERS):
 
     return aggregate_clusters(clustered_flexoffers)
 
+
+def cluster_and_aggregate_dfos(dfos, n_clusters=None):
+    """
+    For DFO mode we skip the Spot‐flex clustering 
+    and simply aggregate each cluster of DFOs with aggnto1.
+    """
+    # You could still cluster them by features if you want:
+    from aggregation.clustering.Hierarchical_clustering import cluster_offers, aggregate_clusters
+    clusters, labels = cluster_offers(dfos, n_clusters or config.NUM_CLUSTERS)
+    # aggregate_clusters already does exactly: if dfos and TYPE=='DFO' → aggnto1
+    # but to be 100% safe regardless of config.TYPE, do:
+    from flexoffer_logic import DFO
+    aggregated = []
+    for cluster in clusters:
+        dflist = [d for d in cluster if isinstance(d, DFO)]
+        if dflist:
+            # the “4” here was your hardcoded n in aggnto1(dfos,4)
+            aggregated.append(aggnto1(dflist, 4))
+    return aggregated
 
 def aggregate_rolling_horizon(offers, now, window_h):
     """

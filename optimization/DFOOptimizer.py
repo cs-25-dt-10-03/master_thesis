@@ -185,6 +185,9 @@ def DFO_MultiMarketOptimization(dfo: DFO) -> pd.DataFrame:
     return df
 
 
+
+
+
 def optimize_dfos(dfos: List[DFO]):
     """
     🧠 Optimizes DFOs across spot, reserve, and activation markets, based on config settings.

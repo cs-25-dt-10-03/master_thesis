@@ -1,12 +1,12 @@
 from database.dataManager import load_and_prepare_prices
 from config import config
-from optimization.flexOfferOptimizer import optimize_flexoffers
+from optimization.flexOfferOptimizer import optimize_flexoffers, optimize_offers
 
 
 from datetime import timedelta
 from typing import List, Dict
 import pandas as pd
-from flexoffer_logic import Flexoffer
+from flexoffer_logic import Flexoffer, DFO
 
 def schedule_offers(offers):
     """
@@ -21,7 +21,6 @@ def schedule_offers(offers):
     print(f"Hvor mange slots i alt: {horizon_slots} \n")
 
 
-
     spot_prices, reserve_prices, activation_prices, indicators = load_and_prepare_prices(
         start_ts=config.SIMULATION_START_DATE,
         horizon_slots=horizon_slots,
@@ -31,7 +30,7 @@ def schedule_offers(offers):
 
     if config.MODE == "joint":
         # All markets optimized together
-        sol = optimize_flexoffers(
+        sol = optimize_offers(
             offers,
             spot_prices,
             reserve_prices=reserve_prices if config.RUN_RESERVE else None,
@@ -42,7 +41,7 @@ def schedule_offers(offers):
 
     elif config.MODE == "sequential":
         # Step 1: Optimize spot-only
-        sol_spot = optimize_flexoffers(
+        sol_spot = optimize_offers(
             offers,
             spot_prices,
             reserve_prices=None,
@@ -52,7 +51,7 @@ def schedule_offers(offers):
 
         # Step 2: Optimize reserve/activation separately, given spot schedule
         zero_spot = pd.Series(0.0, index=spot_prices.index)
-        sol_reserve_activation = optimize_flexoffers(
+        sol_reserve_activation = optimize_offers(
             offers,
             spot_prices=zero_spot,  # no spot cost second pass
             reserve_prices=reserve_prices if config.RUN_RESERVE else None,

@@ -21,12 +21,20 @@ def simulate_fleet(num_evs=config.NUM_EVS, start_date=config.SIMULATION_START_DA
         fleet.append(ev)
 
     offers = []
+
     for day in pd.date_range(start=start_date, periods=simulation_days, freq='D'):
         for ev in fleet:
             profile = ev.sample_day_profile(day)
             if profile:
                 arrival, departure, soc = profile
-                fo = ev.create_flex_offer(arrival, departure, soc)
-                if fo:
-                    offers.append(fo)
+                if config.TYPE == 'FO':
+                    fo = ev.create_flex_offer(arrival, departure, soc)
+                    if fo:
+                        offers.append(fo)
+                elif config.TYPE == 'DFO':
+                    # compute the charging window duration as a timedelta
+                    duration = departure - arrival
+                    dfo = ev.create_dfo(arrival, duration, 4)
+                    if dfo:
+                        offers.append(dfo)
     return offers
