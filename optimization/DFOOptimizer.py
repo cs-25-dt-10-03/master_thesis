@@ -224,8 +224,6 @@ def optimize_dfos(dfos: List[DFO]):
         obj = []
         for t in range(T):
             if use_spot:
-                print("at T: ", t)
-                print("Spot price: ", spot_prices.iloc[t])
                 spot = spot_prices.iloc[t]
             if use_reserve:
                 r_up, r_dn = reserve_prices.iloc[t]

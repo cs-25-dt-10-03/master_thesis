@@ -4,19 +4,21 @@
 from evaluation.utils.plots import plot_results
 from evaluation.fleet_simulator import simulate_fleet
 import json
+from evaluation.metrics import theo_opt
 from classes.electricVehicle import ElectricVehicle
 import os
-from aggregation.clustering.Hierarchical_clustering import cluster_and_aggregate_flexoffers, cluster_and_aggregate_dfos
+from aggregation.clustering.Hierarchical_clustering import cluster_and_aggregate_flexoffers
 from config import config
 import time
 import pandas as pd
 from datetime import timedelta, datetime
 from optimization.scheduler import schedule_offers
+from flexoffer_logic import Flexoffer, DFO, TimeSlice
 
 RESULTS_DIR = "evaluation/results"
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
-def run_single_evaluation(offers, spot, reserve, activation, indicators, scenario):
+def run_single_evaluation(fos, dfos, spot, reserve, activation, indicators, scenario):
     
     # Override config with current scenario
     config.apply_override(scenario)
@@ -30,39 +32,107 @@ def run_single_evaluation(offers, spot, reserve, activation, indicators, scenari
     # we save the runtimes for each day and find the avg
     runtime_sch = []
     runtime_agg = []
-    revs = []
+    days = []
 
     while current < end_date:
 
         current_ts = datetime.timestamp(current)
 
         window_h = 24
-        active = [fo for fo in offers if fo.get_est() >= current_ts and fo.get_est() < current_ts + window_h * 3600]  
+        active_fos = [fo for fo in fos if fo.get_est() >= current_ts and fo.get_est() < current_ts + window_h * 3600]  
+        active_dfos = [dfo for dfo in dfos if dfo.get_est() >= current_ts and dfo.get_est() < current_ts + window_h * 3600]  
 
-        if not active:
+        if config.TYPE == 'FO':
+            active = active_fos
+        elif config.TYPE == 'DFO':
+            active = active_dfos
+
+        print(f"length of active flexOffer for this day: {len(active)}")
+
+        if not active_fos:
             return []
 
         start_agg = time.time()
-        agg_offers = cluster_and_aggregate_dfos(active)
+        agg_offers = cluster_and_aggregate_flexoffers(active, config.NUM_CLUSTERS)
+        print(len(agg_offers))
         runtime_agg.append(time.time() - start_agg)
+
+        print(f"length of aggregated flexoffers in the evaluation: {len(agg_offers)}")
 
         start_sch = time.time()
         solution = schedule_offers(agg_offers)
         runtime_sch.append(time.time() - start_sch)
-        revs.append( compute_profit(solution, spot, reserve, activation, indicators))
+
+        greedy_solution = greedy_baseline_schedule(active_fos)
+
+        rev_sch = compute_profit(solution, spot, reserve, activation, indicators)
+        sch_spot = rev_sch["spot_rev"]
+        sch_res  = rev_sch["res_rev"]
+        sch_act  = rev_sch["act_rev"]
+        
+        rev_baseline = compute_profit(greedy_solution, spot, reserve, activation, indicators)
+        base_spot = rev_baseline["spot_rev"]
+        base_res  = rev_baseline["res_rev"]   # should be zero (Laver kun spot market alloc i baseline)
+        base_act  = rev_baseline["act_rev"]   # likewise usually zero   
+
+        print(f"sch_total: {rev_sch["total_rev"]}")
+        print(f"base_total: {rev_baseline["total_rev"]}")
+
+
+        days.append({
+            "sch": rev_sch,
+            "base": rev_baseline,
+            "sch_spot_rev": sch_spot,
+            "sch_res_rev":  sch_res,
+            "sch_act_rev":  sch_act,
+            "base_spot_rev": base_spot,
+            "base_res_rev":  base_res,
+            "base_act_rev":  base_act,       
+        })
+
 
         current += timedelta(hours = window_h)
         
     mean_runtime_scheduling = round(sum(runtime_sch) / len(runtime_sch), 3)
     mean_runtime_aggregation = round(sum(runtime_agg) / len(runtime_agg), 3)
-    mean_total_rev = round(sum([rev['total_rev'] for rev in revs]) / len(revs), 3)
+
+    n = len(days)
+
+    # mean per-market for optimizer
+    mean_sch_spot = sum(r["sch_spot_rev"] for r in days) / n
+    mean_sch_res  = sum(r["sch_res_rev"]  for r in days) / n
+    mean_sch_act  = sum(r["sch_act_rev"]  for r in days) / n
+
+
+    # mean per-market for baseline
+    mean_base_spot = sum(r["base_spot_rev"] for r in days) / n
+    mean_base_res  = sum(r["base_res_rev"]  for r in days) / n
+    mean_base_act  = sum(r["base_act_rev"]  for r in days) / n
+
+    # compute savings per market
+    saved_spot = mean_base_spot - mean_sch_spot          # cost reduction
+    gain_res   = mean_sch_res  - mean_base_res           # revenue gain
+    gain_act   = mean_sch_act  - mean_base_act           # revenue gain
+
+    # percent savings/gains relative to baseline spot cost
+    # baseline_res and baseline_act are zero for greedy baseline
+    pct_saved_spot = 100.0 * saved_spot / mean_base_spot if mean_base_spot else None
+    pct_gain_res   = 100.0 * gain_res   / mean_base_spot if mean_base_spot else None
+    pct_gain_act   = 100.0 * gain_act   / mean_base_spot if mean_base_spot else None
+
+    # overall total
+    total_rev = mean_sch_res + mean_sch_act - mean_sch_spot
+
+    # overall percent saving relative to baseline cost
+    pct_total_saved = 100.0 * (saved_spot + gain_res + gain_act) / mean_base_spot \
+                      if mean_base_spot else None
 
     # 5. Export each scheduled allocation + start time
     schedules = [{
         "offer": a,
-        "start_time": offers[a].get_scheduled_start_time(),
-        "allocation": offers[a].get_scheduled_allocation()
-    } for a in range(len(offers))]
+        "start_time": fos[a].get_scheduled_start_time(),
+        "allocation": fos[a].get_scheduled_allocation()
+    } for a in range(len(fos))]
 
     return {
         "scenario": scenario, 
@@ -71,9 +141,28 @@ def run_single_evaluation(offers, spot, reserve, activation, indicators, scenari
         "schedules": schedules,
         "used_config": {
         k: getattr(config, k)
-            for k in ["TIME_RESOLUTION", "NUM_EVS", "PENALTY", "MODE", "RUN_SPOT", "RUN_RESERVE", "RUN_ACTIVATION", "SIMULATION_DAYS"]
+            for k in ["TIME_RESOLUTION", "NUM_EVS", "NUM_CLUSTERS", "PENALTY", "MODE", "RUN_SPOT", "RUN_RESERVE", "RUN_ACTIVATION", "SIMULATION_DAYS"]
         },
-        "total_rev": mean_total_rev,
+        "mean_sch_spot":     round(mean_sch_spot,   3),
+        "mean_sch_res":      round(mean_sch_res,    3),
+        "mean_sch_act":      round(mean_sch_act,    3),
+        "mean_base_spot":    round(mean_base_spot,  3),
+        "mean_base_res":     round(mean_base_res,   3),
+        "mean_base_act":     round(mean_base_act,   3),
+
+        # absolute savings/gains
+        "saved_spot":        round(saved_spot,      3),
+        "gain_res":          round(gain_res,        3),
+        "gain_act":          round(gain_act,        3),
+
+        # percent savings/gains
+        "pct_saved_spot":    round(pct_saved_spot,  2) if pct_saved_spot is not None else None,
+        "pct_gain_res":      round(pct_gain_res,    2) if pct_gain_res is not None else None,
+        "pct_gain_act":      round(pct_gain_act,    2) if pct_gain_act is not None else None,
+
+        # overall
+        "total_rev":         round(total_rev,       3),
+        "pct_total_saved":   round(pct_total_saved, 2) if pct_total_saved is not None else None,
     }
 
 
@@ -87,16 +176,17 @@ def evaluate_configurations(spot, reserve, activation, indicators):
     simulation_days=config.SIMULATION_DAYS
 
     # 1: simulate fleet
-    offers = simulate_fleet(
+    fos, dfos = simulate_fleet(
         num_evs=config.NUM_EVS,
         start_date=start_date,
         simulation_days=simulation_days
     )
 
-    results = []
+    print(f"START TID: {config.SIMULATION_START_DATE} \n")
 
+    results = []
     for scenario in scenarios:
-        res = run_single_evaluation(offers, spot, reserve, activation, indicators, scenario)
+        res = run_single_evaluation(fos, dfos, spot, reserve, activation, indicators, scenario)
         results.append(res)
 
     # Save CSV summary
@@ -108,9 +198,17 @@ def evaluate_configurations(spot, reserve, activation, indicators):
             "RUN_ACTIVATION": r["scenario"]["RUN_ACTIVATION"],
             "NUM_EVS": r["used_config"]["NUM_EVS"],
             "TIME_RES": r["used_config"]["TIME_RESOLUTION"],
+            "NUM_CLUSTERS": r["used_config"]["NUM_CLUSTERS"],
             "runtime_scheduling": r["runtime_scheduling"],
             "runtime_aggregation": r["runtime_aggregation"],
-            "total_rev": r["total_rev"],
+            # percent savings/gains
+            "pct_saved_spot":   r["pct_saved_spot"],
+            "pct_gain_res":     r["pct_gain_res"],
+            "pct_gain_act":     r["pct_gain_act"],
+            # totals
+            "pct_total_saved":  r["pct_total_saved"],
+            "total_rev":        r["total_rev"],
+            "mean_base_spot": r["mean_base_spot"],
         }
         for r in results
     ])
@@ -141,21 +239,22 @@ def compute_profit(sol, spot, reserve, activation, indicators):
     pen_cost = 0.0
 
     for a, p_dict in sol["p"].items():
+        print(f"flexOffer: {a}")
         for t, p_val in p_dict.items():
             # spot revenue
             spot_rev += p_val * spot.iloc[t] * dt
 
             # reserve revenue
-            if config.RUN_RESERVE:
-                pr_up_val = sol["pr_up"][a].get(t, 0.0)
-                pr_dn_val = sol["pr_dn"][a].get(t, 0.0)
+            if config.RUN_RESERVE and reserve is not None:
+                pr_up_val = sol["pr_up"][a].get(t, 0.0) or 0.0
+                pr_dn_val = sol["pr_dn"][a].get(t, 0.0) or 0.0
                 r_up, r_dn = reserve.iloc[t]
                 res_rev += (pr_up_val * r_up + pr_dn_val * r_dn) * dt
 
             # activation revenue & penalty
-            if config.RUN_ACTIVATION:
-                pb_up_val = sol["pb_up"][a].get(t, 0.0)
-                pb_dn_val = sol["pb_dn"][a].get(t, 0.0)
+            if config.RUN_ACTIVATION and activation is not None:
+                pb_up_val = sol["pb_up"][a].get(t, 0.0) or 0.0
+                pb_dn_val = sol["pb_dn"][a].get(t, 0.0) or 0.0
                 b_up, b_dn = activation.iloc[t]
                 act_rev += (pb_up_val * b_up + pb_dn_val * b_dn) * dt
 
@@ -171,3 +270,45 @@ def compute_profit(sol, spot, reserve, activation, indicators):
         "penalty":   pen_cost,
         "total_rev": total
     }
+
+
+def greedy_baseline_schedule(agg_offers):
+    """
+    Greedy baseline: always use sim_start_ts to index into prices.
+    """
+    sol = {k: {} for k in ("p","pr_up","pr_dn","pb_up","pb_dn","s_up","s_dn")}
+    if not agg_offers:
+        return sol
+
+    T = 24
+    slot_sec = config.TIME_RESOLUTION  # seconds per slot
+    dt       = slot_sec / 3600.0       # hours per slot
+    sim_start_ts = datetime.timestamp(pd.to_datetime(config.SIMULATION_START_DATE))
+
+    for a, fo in enumerate(agg_offers):
+        max_total = fo.get_max_overall_alloc()
+        prof      = fo.get_profile()
+        dur       = fo.get_duration()
+        start_ts  = fo.get_est()
+        max_pow   = prof[0].max_power
+
+        base_idx  = int((start_ts - sim_start_ts) / slot_sec)
+
+        remaining = max_total
+        p_dict    = {}
+        for i in range(dur):
+            if remaining <= 0:
+                break
+            idx = base_idx + i
+            if idx >= T:
+                break
+            energy_slot = min(max_pow * dt, remaining)
+            p_val       = energy_slot / dt
+            p_dict[idx] = p_val
+            remaining  -= energy_slot
+
+        sol["p"][a] = p_dict
+        for key in ("pr_up","pr_dn","pb_up","pb_dn","s_up","s_dn"):
+            sol[key][a] = {}
+
+    return sol

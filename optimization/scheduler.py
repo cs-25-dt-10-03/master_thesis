@@ -8,7 +8,7 @@ from typing import List, Dict
 import pandas as pd
 from flexoffer_logic import Flexoffer, DFO
 
-def schedule_offers(offers):
+def schedule_offers(offers, spot_prices=None, reserve_prices=None, activation_prices=None, indicators=None):
     """
     Schedules FlexOffers according to current config settings.
     Returns: solution dict
@@ -16,17 +16,14 @@ def schedule_offers(offers):
     slots_per_day = int(24 * (3600 / config.TIME_RESOLUTION))
     horizon_slots = config.SIMULATION_DAYS * slots_per_day
 
-    print(f"START TID: {config.SIMULATION_START_DATE} \n")
-    print(f"slots per dag: {slots_per_day} \n")
-    print(f"Hvor mange slots i alt: {horizon_slots} \n")
+    if spot_prices is None:
+        spot_prices, reserve_prices, activation_prices, indicators = load_and_prepare_prices(
+            start_ts=config.SIMULATION_START_DATE,
+            horizon_slots=horizon_slots,
+            resolution=config.TIME_RESOLUTION
+        )
 
-
-    spot_prices, reserve_prices, activation_prices, indicators = load_and_prepare_prices(
-        start_ts=config.SIMULATION_START_DATE,
-        horizon_slots=horizon_slots,
-        resolution=config.TIME_RESOLUTION
-    )
-
+    print(f"Inde i scheduleren!!: {len(offers)}")
 
     if config.MODE == "joint":
         # All markets optimized together

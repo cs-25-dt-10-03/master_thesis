@@ -1,7 +1,7 @@
-MODE,RUN_SPOT,RUN_RESERVE,RUN_ACTIVATION,NUM_EVS,TIME_RES,runtime_scheduling,runtime_aggregation,total_rev
-joint,True,False,False,10000,3600,0.103,1.418,-93024314.225
-sequential,True,False,False,10000,3600,0.141,1.6,-93024314.225
-joint,True,True,False,10000,3600,0.112,1.379,-91824204.973
-sequential,True,True,False,10000,3600,0.148,1.368,-91824204.973
-joint,True,True,True,10000,3600,0.123,1.445,-100396315.971
-sequential,True,True,True,10000,3600,0.181,1.411,-93024314.225
+MODE,RUN_SPOT,RUN_RESERVE,RUN_ACTIVATION,NUM_EVS,TIME_RES,NUM_CLUSTERS,runtime_scheduling,runtime_aggregation,pct_saved_spot,pct_gain_res,pct_gain_act,pct_total_saved,total_rev,mean_base_spot
+joint,True,False,False,20,3600,5,0.168,0.005,44.34,0.0,0.0,44.34,-241341.951,433577.379
+sequential,True,False,False,20,3600,5,0.135,0.004,44.34,0.0,0.0,44.34,-241341.951,433577.379
+joint,True,True,False,20,3600,5,0.104,0.004,45.81,0.54,0.0,46.35,-232630.518,433577.379
+sequential,True,True,False,20,3600,5,0.169,0.004,44.34,0.55,0.0,44.89,-238944.414,433577.379
+joint,True,True,True,20,3600,5,0.108,0.005,45.81,0.0,0.0,45.81,-234968.286,433577.379
+sequential,True,True,True,20,3600,5,0.154,0.005,44.34,0.0,0.0,44.34,-241341.951,433577.379

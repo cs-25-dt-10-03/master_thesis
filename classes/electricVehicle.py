@@ -242,6 +242,7 @@ class ElectricVehicle:
 
         dfo = DFO(self.vehicle_id, min_prev, max_prev, numsamples, self.charging_power, additional_min, additional_max, earliest_start_timestamp)
         dfo.generate_dependency_polygons()
+        #dfo.calculate_latest_start_time()
         return dfo
 
     def update_soc(self, charged_energy):

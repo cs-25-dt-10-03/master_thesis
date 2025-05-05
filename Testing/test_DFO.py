@@ -107,6 +107,18 @@ def test_agg2to1_and_aggnto1():
     dfo2.generate_dependency_polygons()
 
     aggregated_dfo = agg2to1(dfo1, dfo2, 5)
+
+
+    print("max energy for debugging")
+    for poly in dfo1.polygons:
+        print(poly.min_prev_energy)
+
+    for poly in dfo2.polygons:
+        print(poly.min_prev_energy)
+
+    for poly in aggregated_dfo.polygons:
+        print(poly.min_prev_energy)
+
     assert isinstance(aggregated_dfo, DFO)
     assert len(aggregated_dfo.polygons) > 0
 

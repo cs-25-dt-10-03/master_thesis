@@ -29,7 +29,6 @@ def optimize_offers(offers, *args, **kwargs):
         return optimize_flexoffers(offers, *args, **kwargs)
     else:
         raise TypeError(f"Unknown offer type: {type(first)}")
-    
 
 
 def optimize_flexoffers(offers, spot_prices, reserve_prices=None, activation_prices=None, indicators=None, fixed_p=None):
@@ -51,26 +50,24 @@ def optimize_flexoffers(offers, spot_prices, reserve_prices=None, activation_pri
     #T = pad_profiles_to_common_timeline(offers)
     res = config.TIME_RESOLUTION 
     A = len(offers)
+    # 1) Offsets & horizon
+    sim_start_ts = datetime.timestamp(pd.to_datetime(config.SIMULATION_START_DATE))
+    T = len(spot_prices)           # only slots we actually have prices for
 
-    earliest = min(fo.get_est() for fo in offers)
-    offsets = [ int((fo.get_est()-earliest)/res) for fo in offers ]
-    T = max(offsets[i] + len(offers[i].get_profile()) for i in range(A))
+    offsets = [
+        int((fo.get_est() - sim_start_ts) / res)
+        for fo in offers
+    ]
 
     prob = pulp.LpProblem("FlexOfferScheduling", pulp.LpMaximize)
 
-    # Decision variables
-        # p = {(a,t): pulp.LpVariable(f"p_{a}_{t}", lowBound=0) for a in range(A) for t in range(T)}
-        # # --- if we're in sequential mode, lock in the spot‐schedule from the first solve:
-        # if fixed_p is not None:
-        #     for a in range(A):
-        #         for t in range(T):
-        #             prob += p[(a,t)] == fixed_p[a][t], f"fix_p_{a}_{t}"
     p = {}
     for a, fo in enumerate(offers):
         prof = fo.get_profile()
         for j, ts in enumerate(prof):
             t = offsets[a] + j
-            p[(a,t)] = pulp.LpVariable(f"p_{a}_{t}", lowBound=0)
+            if t < T:
+                p[(a,t)] = pulp.LpVariable(f"p_{a}_{t}", lowBound=0)
 
     if fixed_p is not None:
         for (a,t), var in p.items():
@@ -79,26 +76,17 @@ def optimize_flexoffers(offers, spot_prices, reserve_prices=None, activation_pri
             var.upBound  = val
 
     if config.RUN_RESERVE:
-    #     pr_up = {(a,t): pulp.LpVariable(f"pr_up_{a}_{t}", lowBound=0) for a in range(A) for t in range(T)}
-    #     pr_dn = {(a,t): pulp.LpVariable(f"pr_dn_{a}_{t}", lowBound=0) for a in range(A) for t in range(T)}
-    # else:
-    #     pr_up = pr_dn = {}
         pr_up = {}
         pr_dn = {}
         for a, fo in enumerate(offers):
             prof = fo.get_profile()
             for j in range(len(prof)):
                 t = offsets[a] + j
-                pr_up[(a,t)] = pulp.LpVariable(f"pr_up_{a}_{t}", lowBound=0)
-                pr_dn[(a,t)] = pulp.LpVariable(f"pr_dn_{a}_{t}", lowBound=0)
+                if t < T:
+                    pr_up[(a,t)] = pulp.LpVariable(f"pr_up_{a}_{t}", lowBound=0)
+                    pr_dn[(a,t)] = pulp.LpVariable(f"pr_dn_{a}_{t}", lowBound=0)
 
     if config.RUN_ACTIVATION:
-    #     pb_up = {(a,t): pulp.LpVariable(f"pb_up_{a}_{t}", lowBound=0) for a in range(A) for t in range(T)}
-    #     pb_dn = {(a,t): pulp.LpVariable(f"pb_dn_{a}_{t}", lowBound=0) for a in range(A) for t in range(T)}
-    #     s_up  = {(a,t): pulp.LpVariable(f"s_up_{a}_{t}", lowBound=0) for a in range(A) for t in range(T)}
-    #     s_dn  = {(a,t): pulp.LpVariable(f"s_dn_{a}_{t}", lowBound=0) for a in range(A) for t in range(T)}
-    # else:
-    #     pb_up = pb_dn = s_up = s_dn = {}
         pb_up = {}
         pb_dn = {}
         s_up  = {}
@@ -107,10 +95,11 @@ def optimize_flexoffers(offers, spot_prices, reserve_prices=None, activation_pri
             prof = fo.get_profile()
             for j in range(len(prof)):
                 t = offsets[a] + j
-                pb_up[(a,t)] = pulp.LpVariable(f"pb_up_{a}_{t}", lowBound=0)
-                pb_dn[(a,t)] = pulp.LpVariable(f"pb_dn_{a}_{t}", lowBound=0)
-                s_up[(a,t)]  = pulp.LpVariable(f"s_up_{a}_{t}",  lowBound=0)
-                s_dn[(a,t)]  = pulp.LpVariable(f"s_dn_{a}_{t}",  lowBound=0)
+                if t < T:
+                    pb_up[(a,t)] = pulp.LpVariable(f"pb_up_{a}_{t}", lowBound=0)
+                    pb_dn[(a,t)] = pulp.LpVariable(f"pb_dn_{a}_{t}", lowBound=0)
+                    s_up[(a,t)]  = pulp.LpVariable(f"s_up_{a}_{t}",  lowBound=0)
+                    s_dn[(a,t)]  = pulp.LpVariable(f"s_dn_{a}_{t}",  lowBound=0)
 
     # Objective function
     dt = config.TIME_RESOLUTION / 3600.0
@@ -129,32 +118,39 @@ def optimize_flexoffers(offers, spot_prices, reserve_prices=None, activation_pri
     prob += pulp.lpSum(obj)
 
     # Constraints
+    # --- min total energy ---
     for a, fo in enumerate(offers):
         prof = fo.get_profile()
-        # 1) total‐energy only over valid slots
-        prob += (pulp.lpSum(
-                    p[(a, offsets[a]+j)] * dt
-                    for j in range(len(prof))
-                ) >= fo.get_min_overall_alloc()), f"total_min_energy_{a}"
-        prob += (pulp.lpSum(
-                    p[(a, offsets[a]+j)] * dt
-                    for j in range(len(prof))
-                ) <= fo.get_max_overall_alloc()), f"total_max_energy_{a}"
+        energy_terms = []
+        for j in range(len(prof)):
+            t = offsets[a] + j
+            if t < T:            # only include valid slots
+                energy_terms.append(p[(a, t)] * dt)
+        # only add the constraint if there are any terms
+        if energy_terms:
+            prob += (pulp.lpSum(energy_terms)
+                     >= fo.get_min_overall_alloc()), f"total_min_energy_{a}"
+            prob += (pulp.lpSum(energy_terms)
+                     <= fo.get_max_overall_alloc()), f"total_max_energy_{a}"
+            
 
         # 2) slice‐by‐slice bounds
         for j, ts in enumerate(prof):
             t = offsets[a] + j
-            prob += p[(a,t)] >= ts.min_power
-            prob += p[(a,t)] <= ts.max_power
+            if t < T:
+                prob += p[(a,t)] >= ts.min_power
+                prob += p[(a,t)] <= ts.max_power
 
             if config.RUN_RESERVE:
-                prob += pr_up[(a,t)] <= p[(a,t)]
-                prob += pr_dn[(a,t)] <= ts.max_power - p[(a,t)]
+                if t < T:
+                    prob += pr_up[(a,t)] <= p[(a,t)]
+                    prob += pr_dn[(a,t)] <= ts.max_power - p[(a,t)]
 
             if config.RUN_ACTIVATION and indicators is not None:
-                d_up, d_dn = indicators[t]
-                prob += pb_up[(a,t)] + s_up[(a,t)] >= pr_up[(a,t)] * d_up
-                prob += pb_dn[(a,t)] + s_dn[(a,t)] >= pr_dn[(a,t)] * d_dn
+                if t < T:
+                    d_up, d_dn = indicators[t]
+                    prob += pb_up[(a,t)] + s_up[(a,t)] >= pr_up[(a,t)] * d_up
+                    prob += pb_dn[(a,t)] + s_dn[(a,t)] >= pr_dn[(a,t)] * d_dn
 
     # Solve
     solver = pulp.PULP_CBC_CMD(msg=False)
@@ -197,6 +193,26 @@ def optimize_flexoffers(offers, spot_prices, reserve_prices=None, activation_pri
     return sol
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def optimize_dfos(
     dfos: List[DFO],
     spot_prices: Union[pd.Series, list],
@@ -210,9 +226,14 @@ def optimize_dfos(
     # 1) Offsets & horizon
     # —————————————————————————————————————————————————————————————
     res      = config.TIME_RESOLUTION
-    earliest = min(d.get_est() for d in dfos)
-    offsets  = [int((d.get_est() - earliest)/res) for d in dfos]
-    T        = max(offset + len(d.get_profile()) for d, offset in zip(dfos, offsets))
+    sim_start_ts = datetime.timestamp(pd.to_datetime(config.SIMULATION_START_DATE))
+    T = len(spot_prices)           # only slots we actually have prices for
+
+    offsets = [
+        int((fo.get_est() - sim_start_ts) / res)
+        for fo in dfos
+    ]
+
     A        = len(dfos)
     dt       = res/3600.0
 
@@ -228,22 +249,22 @@ def optimize_dfos(
     s_dn   = {}
 
     for a, d in enumerate(dfos):
-        prof = d.get_profile()
         # cumulative‐dependency var
         for j, poly in enumerate(d.polygons):
             t = offsets[a] + j
-            # slot‐energy
-            p[(a,t)] = pulp.LpVariable(f"p_{a}_{t}", lowBound=0)
-            # reserve
-            if config.RUN_RESERVE:
-                pr_up[(a,t)] = pulp.LpVariable(f"pr_up_{a}_{t}", lowBound=0)
-                pr_dn[(a,t)] = pulp.LpVariable(f"pr_dn_{a}_{t}", lowBound=0)
-            # activation & penalty
-            if config.RUN_ACTIVATION:
-                pb_up[(a,t)] = pulp.LpVariable(f"pb_up_{a}_{t}", lowBound=0)
-                pb_dn[(a,t)] = pulp.LpVariable(f"pb_dn_{a}_{t}", lowBound=0)
-                s_up[(a,t)]  = pulp.LpVariable(f"s_up_{a}_{t}",  lowBound=0)
-                s_dn[(a,t)]  = pulp.LpVariable(f"s_dn_{a}_{t}",  lowBound=0)
+            if t < T:
+                # slot‐energy
+                p[(a,t)] = pulp.LpVariable(f"p_{a}_{t}", lowBound=0)
+                # reserve
+                if config.RUN_RESERVE:
+                    pr_up[(a,t)] = pulp.LpVariable(f"pr_up_{a}_{t}", lowBound=0)
+                    pr_dn[(a,t)] = pulp.LpVariable(f"pr_dn_{a}_{t}", lowBound=0)
+                # activation & penalty
+                if config.RUN_ACTIVATION:
+                    pb_up[(a,t)] = pulp.LpVariable(f"pb_up_{a}_{t}", lowBound=0)
+                    pb_dn[(a,t)] = pulp.LpVariable(f"pb_dn_{a}_{t}", lowBound=0)
+                    s_up[(a,t)]  = pulp.LpVariable(f"s_up_{a}_{t}",  lowBound=0)
+                    s_dn[(a,t)]  = pulp.LpVariable(f"s_dn_{a}_{t}",  lowBound=0)
 
     # —————————————————————————————————————————————————————————————
     # 3) Build objective (spot, reserve, activation)
@@ -272,8 +293,29 @@ def optimize_dfos(
         cumulative_energy = LpAffineExpression()
         poly_list = d.polygons  # each is a DependencyPolygon
 
+        min_terms = []
+        max_terms = []
+        for j in range(len(d.polygons)):
+            t = offsets[a] + j
+            if t < T:
+                min_terms.append(p[(a, t)] * dt)
+                max_terms.append(p[(a, t)] * dt)
+        if min_terms:
+            prob += (pulp.lpSum(min_terms)
+                     >= d.min_total_energy), f"min_total_{a}"
+        if max_terms:
+            prob += (pulp.lpSum(max_terms)
+                     <= d.max_total_energy), f"max_total_{a}"
+        
+        print(f"min og max energy: {d.min_total_energy} og {d.max_total_energy}")
+
+
+
         for j, poly in enumerate(poly_list):
             t = offsets[a] + j
+            if t >= T:
+                continue
+        
             points = poly.points 
 
             if len(points) < 4:
@@ -285,6 +327,9 @@ def optimize_dfos(
                     prev_max = points[k]
                     next_min = points[k + 1]
                     next_max = points[k + 2]
+
+                    if next_min.x == prev_min.x or next_max.x == prev_max.x:
+                        continue
 
                     energy_min = prev_min.y + ((next_min.y - prev_min.y) / (next_min.x - prev_min.x)) * (cumulative_energy - prev_min.x)
                     energy_max = prev_max.y + ((next_max.y - prev_max.y) / (next_max.x - prev_max.x)) * (cumulative_energy - prev_max.x)

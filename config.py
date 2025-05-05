@@ -15,9 +15,9 @@ class config:
     _config_data = load_config()
 
     # Simulations
-    NUM_EVS = _config_data.get("NUM_EVS", 1000)
+    NUM_EVS = _config_data.get("NUM_EVS", 1)
     NUM_CLUSTERS = 5
-    SIMULATION_DAYS = _config_data.get("SIMULATION_DAYS", 30)
+    SIMULATION_DAYS = _config_data.get("SIMULATION_DAYS", 1)
     SIMULATION_START_DATE = _config_data.get("SIMULATION_START_DATE", "2024-03-01")
 
     TYPE = 'DFO'
@@ -48,6 +48,10 @@ class config:
         'gmm':    {'n_components': NUM_CLUSTERS, 'covariance_type': 'full', 'random_state': 42},
         'dbscan': {'eps': 0.5, 'min_samples': 5}
     }
+
+    RUN_THEORETICAL_BOUND = True
+    MAX_OFFERS_FOR_BOUND = 50
+
 
     @classmethod
     def apply_override(cls, overrides):

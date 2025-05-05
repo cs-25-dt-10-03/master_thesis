@@ -2,12 +2,13 @@ import numpy as np
 from scipy.cluster.hierarchy import dendrogram, linkage
 from sklearn.cluster import AgglomerativeClustering, KMeans, DBSCAN
 from sklearn.mixture import GaussianMixture
-from aggregation.clustering.metrics import evaluate_clustering
+from sklearn.preprocessing import StandardScaler
 from config import config
 from datetime import timedelta
 from aggregation.alignments import start_alignment_fast
 from flexoffer_logic import Flexoffer, DFO, aggnto1
 import matplotlib.pyplot as plt
+from aggregation.clustering.metrics import evaluate_clustering
 
 CLUSTER_METHOD = config.CLUSTER_METHOD
 CLUSTER_PARAMS = config.CLUSTER_PARAMS
@@ -16,12 +17,14 @@ CLUSTER_PARAMS = config.CLUSTER_PARAMS
 def extract_features(offer):
     """
     Creates a feature vector for an offer:
-      [earliest_ts, latest_ts, duration_secs, min_energy, total_energy]
+      [earliest_ts, latest_ts, min_total_energy]
     """ 
     if isinstance(offer, Flexoffer):
         return np.array([
             offer.get_est(),
             offer.get_lst(),
+            offer.get_duration(),
+            offer.get_lst() - offer.get_est(),
             offer.get_min_overall_alloc(),
         ])
     elif isinstance(offer, DFO):
@@ -34,7 +37,7 @@ def extract_features(offer):
         raise ValueError("Unknown offer type")
 
 
-def cluster_offers(offers, n_clusters=3):
+def cluster_offers(offers, n_clusters):
     """
     Clusters offers into up to n_clusters, normalizing features.
 
@@ -46,13 +49,15 @@ def cluster_offers(offers, n_clusters=3):
         list of clusters of length n_clusters and corresponding labels.
     """
     X = np.vstack([extract_features(o) for o in offers])
+    X = StandardScaler().fit_transform(X)
 
-    # Select clustering algorithm
     method = CLUSTER_METHOD.lower()
-    params = CLUSTER_PARAMS.get(method, {})
 
-    print(f'params:  {params}')
-
+    params = dict(CLUSTER_PARAMS.get(method, {}))
+    if method == 'ward' or method == 'kmeans':
+        params['n_clusters'] = min(n_clusters, len(offers))
+    elif method == 'gmm':
+        params['n_components'] = min(n_clusters, len(offers))
     if method == 'ward':
         model = AgglomerativeClustering(**params)
     elif method == 'kmeans':
@@ -86,8 +91,6 @@ def aggregate_clusters(clustered_offers):
         flexoffers = [o for o in cluster if isinstance(o, Flexoffer)]
         dfos = [o for o in cluster if isinstance(o, DFO)]
 
-        print(cluster)
-
         if flexoffers and config.TYPE == 'FO':
             afo = start_alignment_fast(flexoffers)
             aggregated_offers.append(afo)
@@ -99,11 +102,12 @@ def aggregate_clusters(clustered_offers):
 
 
 
-def cluster_and_aggregate_flexoffers(offers, n_clusters=config.NUM_CLUSTERS):
+def cluster_and_aggregate_flexoffers(offers, n_clusters):
     """
     Full pipeline: cluster, evaluate, and aggregate.
     """
     clustered_flexoffers, labels = cluster_offers(offers, n_clusters=n_clusters)
+    
 
     # Compute clustering quality metrics
     evaluation = evaluate_clustering(offers, labels)
@@ -114,40 +118,6 @@ def cluster_and_aggregate_flexoffers(offers, n_clusters=config.NUM_CLUSTERS):
     print("======================================")
 
     return aggregate_clusters(clustered_flexoffers)
-
-
-def cluster_and_aggregate_dfos(dfos, n_clusters=None):
-    """
-    For DFO mode we skip the Spot‐flex clustering 
-    and simply aggregate each cluster of DFOs with aggnto1.
-    """
-    # You could still cluster them by features if you want:
-    from aggregation.clustering.Hierarchical_clustering import cluster_offers, aggregate_clusters
-    clusters, labels = cluster_offers(dfos, n_clusters or config.NUM_CLUSTERS)
-    # aggregate_clusters already does exactly: if dfos and TYPE=='DFO' → aggnto1
-    # but to be 100% safe regardless of config.TYPE, do:
-    from flexoffer_logic import DFO
-    aggregated = []
-    for cluster in clusters:
-        dflist = [d for d in cluster if isinstance(d, DFO)]
-        if dflist:
-            # the “4” here was your hardcoded n in aggnto1(dfos,4)
-            aggregated.append(aggnto1(dflist, 4))
-    return aggregated
-
-def aggregate_rolling_horizon(offers, now, window_h):
-    """
-    Returns aggregated offers whose start times are in [now, now+window_h).
-    This can be used *before* scheduling.
-    """
-    window_end = now + timedelta(hours=window_h)
-    active = [fo for fo in offers if fo.get_est() >= now and fo.get_est() < window_end]
-
-    if not active:
-        return []
-
-    agg_offers, labels = cluster_and_aggregate_flexoffers(active)
-    return agg_offers
 
 
 
