@@ -1,10 +1,9 @@
 # Entry point for evaluation
 # Works with both FlexOffers and DFOs
 
-from evaluation.utils.plots import plot_results
 from evaluation.fleet_simulator import simulate_fleet
 import json
-from evaluation.metrics import theo_opt
+from evaluation.metrics import schedule_dfos_theoretical
 from classes.electricVehicle import ElectricVehicle
 import os
 from aggregation.clustering.Hierarchical_clustering import cluster_and_aggregate_flexoffers
@@ -12,16 +11,28 @@ from config import config
 import time
 import pandas as pd
 from datetime import timedelta, datetime
+from database.dataManager import load_and_prepare_prices
 from optimization.scheduler import schedule_offers
 from flexoffer_logic import Flexoffer, DFO, TimeSlice
 
 RESULTS_DIR = "evaluation/results"
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
-def run_single_evaluation(fos, dfos, spot, reserve, activation, indicators, scenario):
+def run_single_evaluation(fos, dfos, scenario):
     
     # Override config with current scenario
     config.apply_override(scenario)
+
+    start = config.SIMULATION_START_DATE
+    slots_per_day = int(24 * (3600 / config.TIME_RESOLUTION))
+    horizon_slots = config.SIMULATION_DAYS * slots_per_day
+
+    spot, reserve, activation, indicators = load_and_prepare_prices(
+        start_ts=start,
+        horizon_slots=horizon_slots,
+        resolution=config.TIME_RESOLUTION
+    )
+    print(f"længde på spot data i evaluation: {len(spot)}")
 
     start_date=pd.to_datetime(config.SIMULATION_START_DATE)
     current=pd.to_datetime(config.SIMULATION_START_DATE)
@@ -54,16 +65,17 @@ def run_single_evaluation(fos, dfos, spot, reserve, activation, indicators, scen
 
         start_agg = time.time()
         agg_offers = cluster_and_aggregate_flexoffers(active, config.NUM_CLUSTERS)
-        print(len(agg_offers))
         runtime_agg.append(time.time() - start_agg)
 
         print(f"length of aggregated flexoffers in the evaluation: {len(agg_offers)}")
+
 
         start_sch = time.time()
         solution = schedule_offers(agg_offers)
         runtime_sch.append(time.time() - start_sch)
 
         greedy_solution = greedy_baseline_schedule(active_fos)
+        optimal_solution = schedule_offers(active_dfos)
 
         rev_sch = compute_profit(solution, spot, reserve, activation, indicators)
         sch_spot = rev_sch["spot_rev"]
@@ -74,10 +86,9 @@ def run_single_evaluation(fos, dfos, spot, reserve, activation, indicators, scen
         base_spot = rev_baseline["spot_rev"]
         base_res  = rev_baseline["res_rev"]   # should be zero (Laver kun spot market alloc i baseline)
         base_act  = rev_baseline["act_rev"]   # likewise usually zero   
-
-        print(f"sch_total: {rev_sch["total_rev"]}")
-        print(f"base_total: {rev_baseline["total_rev"]}")
-
+        
+        rev_optimal = compute_profit(optimal_solution, spot, reserve, activation, indicators)
+        opt_total = rev_optimal["total_rev"]  
 
         days.append({
             "sch": rev_sch,
@@ -87,7 +98,8 @@ def run_single_evaluation(fos, dfos, spot, reserve, activation, indicators, scen
             "sch_act_rev":  sch_act,
             "base_spot_rev": base_spot,
             "base_res_rev":  base_res,
-            "base_act_rev":  base_act,       
+            "base_act_rev":  base_act,
+            "opt_total_rev": opt_total,
         })
 
 
@@ -98,16 +110,19 @@ def run_single_evaluation(fos, dfos, spot, reserve, activation, indicators, scen
 
     n = len(days)
 
-    # mean per-market for optimizer
+    # mean per-market for scheduler
     mean_sch_spot = sum(r["sch_spot_rev"] for r in days) / n
     mean_sch_res  = sum(r["sch_res_rev"]  for r in days) / n
     mean_sch_act  = sum(r["sch_act_rev"]  for r in days) / n
-
 
     # mean per-market for baseline
     mean_base_spot = sum(r["base_spot_rev"] for r in days) / n
     mean_base_res  = sum(r["base_res_rev"]  for r in days) / n
     mean_base_act  = sum(r["base_act_rev"]  for r in days) / n
+
+    # mean overall for theoretical optimum
+    optimal_total = sum(r["opt_total_rev"] for r in days) / n
+
 
     # compute savings per market
     saved_spot = mean_base_spot - mean_sch_spot          # cost reduction
@@ -122,6 +137,14 @@ def run_single_evaluation(fos, dfos, spot, reserve, activation, indicators, scen
 
     # overall total
     total_rev = mean_sch_res + mean_sch_act - mean_sch_spot
+
+    print(f"theo optimal: {optimal_total}")
+    print(f"schedule result: {total_rev}")
+
+
+    # overall percent compared to optimal
+    pct_of_optimal = (optimal_total / total_rev) * 100 if optimal_total else None
+
 
     # overall percent saving relative to baseline cost
     pct_total_saved = 100.0 * (saved_spot + gain_res + gain_act) / mean_base_spot \
@@ -141,7 +164,7 @@ def run_single_evaluation(fos, dfos, spot, reserve, activation, indicators, scen
         "schedules": schedules,
         "used_config": {
         k: getattr(config, k)
-            for k in ["TIME_RESOLUTION", "NUM_EVS", "NUM_CLUSTERS", "PENALTY", "MODE", "RUN_SPOT", "RUN_RESERVE", "RUN_ACTIVATION", "SIMULATION_DAYS"]
+            for k in ["TIME_RESOLUTION", "NUM_EVS", "CLUSTER_METHOD", "NUM_CLUSTERS", "PENALTY", "MODE", "RUN_SPOT", "RUN_RESERVE", "RUN_ACTIVATION", "SIMULATION_DAYS"]
         },
         "mean_sch_spot":     round(mean_sch_spot,   3),
         "mean_sch_res":      round(mean_sch_res,    3),
@@ -163,10 +186,13 @@ def run_single_evaluation(fos, dfos, spot, reserve, activation, indicators, scen
         # overall
         "total_rev":         round(total_rev,       3),
         "pct_total_saved":   round(pct_total_saved, 2) if pct_total_saved is not None else None,
+
+        # part of optimal
+        "pct_of_optimal": round(pct_of_optimal, 3) if pct_of_optimal is not None else None
     }
 
 
-def evaluate_configurations(spot, reserve, activation, indicators):
+def evaluate_configurations():
 
     out_dir = 'evaluation/results'
     os.makedirs(out_dir, exist_ok=True)
@@ -186,7 +212,7 @@ def evaluate_configurations(spot, reserve, activation, indicators):
 
     results = []
     for scenario in scenarios:
-        res = run_single_evaluation(fos, dfos, spot, reserve, activation, indicators, scenario)
+        res = run_single_evaluation(fos, dfos, scenario)
         results.append(res)
 
     # Save CSV summary
@@ -196,8 +222,9 @@ def evaluate_configurations(spot, reserve, activation, indicators):
             "RUN_SPOT": r["scenario"]["RUN_SPOT"],
             "RUN_RESERVE": r["scenario"]["RUN_RESERVE"],
             "RUN_ACTIVATION": r["scenario"]["RUN_ACTIVATION"],
-            "NUM_EVS": r["used_config"]["NUM_EVS"],
-            "TIME_RES": r["used_config"]["TIME_RESOLUTION"],
+            "NUM_EVS": r["scenario"]["NUM_EVS"],
+            "TIME_RES": r["scenario"]["TIME_RESOLUTION"],
+            "CLUSTER_METHOD": r["used_config"]["CLUSTER_METHOD"],
             "NUM_CLUSTERS": r["used_config"]["NUM_CLUSTERS"],
             "runtime_scheduling": r["runtime_scheduling"],
             "runtime_aggregation": r["runtime_aggregation"],
@@ -209,20 +236,57 @@ def evaluate_configurations(spot, reserve, activation, indicators):
             "pct_total_saved":  r["pct_total_saved"],
             "total_rev":        r["total_rev"],
             "mean_base_spot": r["mean_base_spot"],
+            "pct_of_optimal": r["pct_of_optimal"],
         }
         for r in results
     ])
     df.to_csv(os.path.join(out_dir, "summary.csv"), index=False)
 
 
+
 def get_scenarios():
     return [
-        {"MODE": "joint", "RUN_SPOT": True, "RUN_RESERVE": False, "RUN_ACTIVATION": False},
-        {"MODE": "sequential", "RUN_SPOT": True, "RUN_RESERVE": False, "RUN_ACTIVATION": False},
-        {"MODE": "joint", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": False},
-        {"MODE": "sequential", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": False},
-        {"MODE": "joint", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": True},
-        {"MODE": "sequential", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": True},
+        {"MODE": "joint", "RUN_SPOT": True, "RUN_RESERVE": False, "RUN_ACTIVATION": False, "TIME_RESOLUTION": 3600, "NUM_EVS": 20},
+        {"MODE": "sequential", "RUN_SPOT": True, "RUN_RESERVE": False, "RUN_ACTIVATION": False, "TIME_RESOLUTION": 3600, "NUM_EVS": 20},
+        {"MODE": "joint", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": False, "TIME_RESOLUTION": 3600, "NUM_EVS": 20},
+        {"MODE": "sequential", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": False, "TIME_RESOLUTION": 3600, "NUM_EVS": 20},
+        {"MODE": "joint", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": True, "TIME_RESOLUTION": 3600, "NUM_EVS": 20},
+        {"MODE": "sequential", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": True, "TIME_RESOLUTION": 3600, "NUM_EVS": 20},
+
+        {"MODE": "joint", "RUN_SPOT": True, "RUN_RESERVE": False, "RUN_ACTIVATION": False, "TIME_RESOLUTION": 900, "NUM_EVS": 20},
+        {"MODE": "sequential", "RUN_SPOT": True, "RUN_RESERVE": False, "RUN_ACTIVATION": False, "TIME_RESOLUTION": 900, "NUM_EVS": 20},
+        {"MODE": "joint", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": False, "TIME_RESOLUTION": 900, "NUM_EVS": 20},
+        {"MODE": "sequential", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": False, "TIME_RESOLUTION": 900, "NUM_EVS": 20},
+        {"MODE": "joint", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": True, "TIME_RESOLUTION": 900, "NUM_EVS": 20},
+        {"MODE": "sequential", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": True, "TIME_RESOLUTION": 900, "NUM_EVS": 20},
+
+        {"MODE": "joint", "RUN_SPOT": True, "RUN_RESERVE": False, "RUN_ACTIVATION": False, "TIME_RESOLUTION": 3600, "NUM_EVS": 100},
+        {"MODE": "sequential", "RUN_SPOT": True, "RUN_RESERVE": False, "RUN_ACTIVATION": False, "TIME_RESOLUTION": 3600, "NUM_EVS": 100},
+        {"MODE": "joint", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": False, "TIME_RESOLUTION": 3600, "NUM_EVS": 100},
+        {"MODE": "sequential", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": False, "TIME_RESOLUTION": 3600, "NUM_EVS": 100},
+        {"MODE": "joint", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": True, "TIME_RESOLUTION": 3600, "NUM_EVS": 100},
+        {"MODE": "sequential", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": True, "TIME_RESOLUTION": 3600, "NUM_EVS": 100},
+
+        {"MODE": "joint", "RUN_SPOT": True, "RUN_RESERVE": False, "RUN_ACTIVATION": False, "TIME_RESOLUTION": 900, "NUM_EVS": 100},
+        {"MODE": "sequential", "RUN_SPOT": True, "RUN_RESERVE": False, "RUN_ACTIVATION": False, "TIME_RESOLUTION": 900, "NUM_EVS": 100},
+        {"MODE": "joint", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": False, "TIME_RESOLUTION": 900, "NUM_EVS": 100},
+        {"MODE": "sequential", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": False, "TIME_RESOLUTION": 900, "NUM_EVS": 100},
+        {"MODE": "joint", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": True, "TIME_RESOLUTION": 900, "NUM_EVS": 100},
+        {"MODE": "sequential", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": True, "TIME_RESOLUTION": 900, "NUM_EVS": 100},
+
+        {"MODE": "joint", "RUN_SPOT": True, "RUN_RESERVE": False, "RUN_ACTIVATION": False, "TIME_RESOLUTION": 3600, "NUM_EVS": 200},
+        {"MODE": "sequential", "RUN_SPOT": True, "RUN_RESERVE": False, "RUN_ACTIVATION": False, "TIME_RESOLUTION": 3600, "NUM_EVS": 200},
+        {"MODE": "joint", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": False, "TIME_RESOLUTION": 3600, "NUM_EVS": 200},
+        {"MODE": "sequential", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": False, "TIME_RESOLUTION": 3600, "NUM_EVS": 200},
+        {"MODE": "joint", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": True, "TIME_RESOLUTION": 3600, "NUM_EVS": 200},
+        {"MODE": "sequential", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": True, "TIME_RESOLUTION": 3600, "NUM_EVS": 200},
+
+        {"MODE": "joint", "RUN_SPOT": True, "RUN_RESERVE": False, "RUN_ACTIVATION": False, "TIME_RESOLUTION": 900, "NUM_EVS": 200},
+        {"MODE": "sequential", "RUN_SPOT": True, "RUN_RESERVE": False, "RUN_ACTIVATION": False, "TIME_RESOLUTION": 900, "NUM_EVS": 200},
+        {"MODE": "joint", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": False, "TIME_RESOLUTION": 900, "NUM_EVS": 200},
+        {"MODE": "sequential", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": False, "TIME_RESOLUTION": 900, "NUM_EVS": 200},
+        {"MODE": "joint", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": True, "TIME_RESOLUTION": 900, "NUM_EVS": 200},
+        {"MODE": "sequential", "RUN_SPOT": True, "RUN_RESERVE": True, "RUN_ACTIVATION": True, "TIME_RESOLUTION": 900, "NUM_EVS": 200},
     ]
 
 
@@ -233,13 +297,13 @@ def compute_profit(sol, spot, reserve, activation, indicators):
     """
     dt = config.TIME_RESOLUTION / 3600.0  # hours per slot
 
+
     spot_rev = 0.0
     res_rev  = 0.0
     act_rev  = 0.0
     pen_cost = 0.0
 
     for a, p_dict in sol["p"].items():
-        print(f"flexOffer: {a}")
         for t, p_val in p_dict.items():
             # spot revenue
             spot_rev += p_val * spot.iloc[t] * dt
@@ -280,10 +344,10 @@ def greedy_baseline_schedule(agg_offers):
     if not agg_offers:
         return sol
 
-    T = 24
     slot_sec = config.TIME_RESOLUTION  # seconds per slot
     dt       = slot_sec / 3600.0       # hours per slot
     sim_start_ts = datetime.timestamp(pd.to_datetime(config.SIMULATION_START_DATE))
+    T = 24 / dt
 
     for a, fo in enumerate(agg_offers):
         max_total = fo.get_max_overall_alloc()

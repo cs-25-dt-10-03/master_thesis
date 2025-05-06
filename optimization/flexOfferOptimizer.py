@@ -307,7 +307,7 @@ def optimize_dfos(
             prob += (pulp.lpSum(max_terms)
                      <= d.max_total_energy), f"max_total_{a}"
         
-        print(f"min og max energy: {d.min_total_energy} og {d.max_total_energy}")
+        # print(f"min og max energy: {d.min_total_energy} og {d.max_total_energy}")
 
 
 

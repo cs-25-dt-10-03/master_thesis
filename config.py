@@ -16,12 +16,12 @@ class config:
     _config_data = load_config()
 
     # Simulations
-    NUM_EVS = _config_data.get("NUM_EVS", 1)
+    NUM_EVS = _config_data.get("NUM_EVS", 20)
     NUM_CLUSTERS = 5
     SIMULATION_DAYS = _config_data.get("SIMULATION_DAYS", 1)
     SIMULATION_START_DATE = _config_data.get("SIMULATION_START_DATE", "2024-03-01")
 
-    TYPE = 'DFO'
+    TYPE = 'FO'
     # Market requirements
     TIME_RESOLUTION = _config_data.get("TIME_RESOLUTION", 3600)
     MIN_BID_SIZE = _config_data.get("MIN_BID_SIZE", 100)
@@ -47,9 +47,6 @@ class config:
         'gmm':    {'n_components': NUM_CLUSTERS, 'covariance_type': 'full', 'random_state': 42},
         'dbscan': {'eps': 0.5, 'min_samples': 5}
     }
-
-    RUN_THEORETICAL_BOUND = True
-    MAX_OFFERS_FOR_BOUND = 50
 
 
     @classmethod

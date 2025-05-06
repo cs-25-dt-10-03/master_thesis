@@ -174,11 +174,6 @@ def load_and_prepare_prices(start_ts, horizon_slots, resolution):
     start_ts = pd.to_datetime(start_ts)
     end_ts = start_ts + pd.to_timedelta(horizon_slots * resolution, unit="s")
 
-    # print(spot.head())
-    # print(start_ts)
-
-    # print("Slicing from:", start_ts, "to", end_ts)
-    # print("Spot range:", spot["HourDK"].min(), "-", spot["HourDK"].max())
 
     spot = spot[(spot["HourDK"] >= start_ts) & (spot["HourDK"] < end_ts)]
     mfrr = mfrr[(mfrr["HourDK"] >= start_ts) & (mfrr["HourDK"] < end_ts)]

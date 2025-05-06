@@ -1,89 +1,139 @@
-
+from datetime import datetime, timedelta
+import pandas as pd
 import pulp
 from config import config
-from flexoffer_logic import DFO, Flexoffer
+from optimization.flexOfferOptimizer import DFO
+# Unified price loader
+from database.dataManager import load_and_prepare_prices
 
-def theo_opt(dfos, spot, reserve=None, activation=None):
+
+def optimize_dfos_theoretical(
+    dfos: list[DFO],
+    start_date: str,
+    simulation_days: int
+) -> dict:
     """
-    Perfect-foresight LP relaxation bound over unaggregated DFOs.
-    Returns (solution_dict, bound_value).
+    True day-ahead optimum for raw DFOs using full mFRR market model:
+    - Use historical spot prices, reserve prices and real activation calls
+    - Enforce capacity + activation coupling exactly
+    - Respect slice polygon bounds and global energy caps
+    - No clustering or relaxations
+    Returns solution dict compatible with compute_profit
     """
+    # Determine horizon
+    slots_per_day = int(24 * (3600 / config.TIME_RESOLUTION))
+    horizon_slots = simulation_days * slots_per_day
 
-    dt = config.TIME_RESOLUTION / 3600.0  # hours per slot
-    model = pulp.LpProblem("FullMarket_LPBound", pulp.LpMaximize)
+    # Load prices and activation/call indicators
+    spot, reserve, activation, indicators = load_and_prepare_prices(
+        start_ts=start_date,
+        horizon_slots=horizon_slots,
+        resolution=config.TIME_RESOLUTION
+    )
+    # activation DataFrame in this context contains actual call volumes in 'up','dn'
 
-    # Decision variables
-    p    = {}  # spot
-    pru  = {}  # reserve up bids
-    prd  = {}  # reserve down bids
-    pbu  = {}  # activation up
-    pbd  = {}  # activation down
-    E    = {}  # cumulative energy
+    slot_sec = config.TIME_RESOLUTION
+    dt       = slot_sec / 3600.0
+    T        = len(spot)
 
-    # Build the LP
-    for v, dfo in enumerate(dfos):
-        # initialize cumulative energy at 0
-        E[v,0] = pulp.LpVariable(f"E_{v}_0", lowBound=0, upBound=0)
-        model += E[v,0] == 0
+    # Align DFOs into this horizon
+    sim0_ts  = datetime.timestamp(pd.to_datetime(start_date))
+    offsets  = [int((d.get_est() - sim0_ts)/slot_sec) for d in dfos]
+    A        = len(dfos)
 
-        for i, poly in enumerate(dfo.polygons):
-            # map slice i to global time index t
-            t = int((dfo.start_ts + i*config.TIME_RESOLUTION - dfo.global_start) 
-                    / config.TIME_RESOLUTION)
+    # Build LP
+    prob = pulp.LpProblem("DFO_TrueOptimum", pulp.LpMaximize)
 
-            # create continuous vars
-            p[v,i]   = pulp.LpVariable(f"p_{v}_{i}",   lowBound=0, upBound=dfo.charging_power)
-            pru[v,i] = pulp.LpVariable(f"pru_{v}_{i}", lowBound=0, upBound=dfo.charging_power)
-            prd[v,i] = pulp.LpVariable(f"prd_{v}_{i}", lowBound=0, upBound=dfo.charging_power)
-            pbu[v,i] = pulp.LpVariable(f"pbu_{v}_{i}", lowBound=0, upBound=dfo.charging_power)
-            pbd[v,i] = pulp.LpVariable(f"pbd_{v}_{i}", lowBound=0, upBound=dfo.charging_power)
+    # --- Decision variables ---
+    p     = {}
+    pr_up = {}
+    pr_dn = {}
+    s_up  = {}
+    s_dn  = {}
+    for a, d in enumerate(dfos):
+        for j, poly in enumerate(d.polygons):
+            t = offsets[a] + j
+            if t < 0 or t >= T:
+                continue
+            # charging power
+            p[(a,t)]     = pulp.LpVariable(f"p_{a}_{t}",     lowBound=0)
+            # reserve capacity
+            pr_up[(a,t)] = pulp.LpVariable(f"pr_up_{a}_{t}", lowBound=0)
+            pr_dn[(a,t)] = pulp.LpVariable(f"pr_dn_{a}_{t}", lowBound=0)
+            # actual activation
+            s_up[(a,t)]  = pulp.LpVariable(f"s_up_{a}_{t}",  lowBound=0)
+            s_dn[(a,t)]  = pulp.LpVariable(f"s_dn_{a}_{t}",  lowBound=0)
 
-            # convex‐combination of polygon vertices
-            # this enforces (E_prev, p) ∈ polygon
-            ws = []
-            for j, (e_j, p_j) in enumerate(poly.points):
-                w = pulp.LpVariable(f"w_{v}_{i}_{j}", lowBound=0, upBound=1)
-                ws.append(w)
-                # accumulate objective contribution from spot
-                # we'll add full objective below
-            model += pulp.lpSum(ws) == 1
-            model += E[v,i] == pulp.lpSum(ws[j]*poly.points[j][0] for j in range(len(ws)))
-            model += p[v,i] == pulp.lpSum(ws[j]*poly.points[j][1] for j in range(len(ws)))
+    # --- Objective: spot cost (negative), reserve capacity revenue, activation energy revenue ---
+    terms = []
+    for (a,t), var in p.items():
+        terms.append(- spot.iloc[t] * var * dt)
+    for (a,t), var in pr_up.items():
+        terms.append(reserve['up'].iloc[t] * var * dt)
+    for (a,t), var in pr_dn.items():
+        terms.append(reserve['dn'].iloc[t] * var * dt)
+    for (a,t), var in s_up.items():
+        terms.append(activation['up'].iloc[t] * var * dt)
+    for (a,t), var in s_dn.items():
+        terms.append(activation['dn'].iloc[t] * var * dt)
+    prob += pulp.lpSum(terms)
 
-            # energy evolution
-            E[v,i+1] = pulp.LpVariable(f"E_{v}_{i+1}", lowBound=0)
-            model += E[v,i+1] == E[v,i] + p[v,i]*dt
+    # --- Constraints ---
+    # 1) Polygon bounds on p
+    for (a,t), var in p.items():
+        poly = dfos[a].polygons[t-offsets[a]]
+        ys = [pt.y for pt in poly.points]
+        prob += var >= min(ys), f"slice_min_{a}_{t}"
+        prob += var <= max(ys), f"slice_max_{a}_{t}"
 
-            # power‐coupling constraints
-            model += p[v,i] + pru[v,i] <= dfo.charging_power
-            model += p[v,i] - prd[v,i] >= 0
-            model += pbu[v,i] <= pru[v,i]
-            model += pbd[v,i] <= prd[v,i]
+    # 2) Reserve coupling
+    for (a,t), rvar in pr_up.items():
+        prob += rvar <= p[(a,t)], f"ru_le_p_{a}_{t}"
+    for (a,t), rvar in pr_dn.items():
+        poly = dfos[a].polygons[t-offsets[a]]
+        p_max = max(pt.y for pt in poly.points)
+        prob += rvar <= p_max - p[(a,t)], f"rd_le_cap_{a}_{t}"
 
-            # accumulate into objective
-            # spot
-            model += spot[t] * p[v,i] * dt
-            # reserve (if enabled)
-            if reserve is not None:
-                model += reserve["up"][t]   * pru[v,i] * dt
-                model += reserve["dn"][t]   * prd[v,i] * dt
-            # activation (if enabled)
-            if activation is not None:
-                model += activation["up"][t] * pbu[v,i] * dt
-                model += activation["dn"][t] * pbd[v,i] * dt
+    # 3) Activation coupling and actual calls
+    for (a,t), svar in s_up.items():
+        prob += svar <= pr_up[(a,t)], f"su_le_ru_{a}_{t}"
+        prob += svar <= indicators['up'].iloc[t], f"su_le_call_{a}_{t}"
+    for (a,t), svar in s_dn.items():
+        prob += svar <= pr_dn[(a,t)], f"sd_le_rd_{a}_{t}"
+        prob += svar <= indicators['dn'].iloc[t], f"sd_le_call_{a}_{t}"
 
-    # Solve **as a pure LP** (no integers)
-    model.solve(pulp.PULP_CBC_CMD(msg=False, timeLimit=60))
+    # 4) Global energy caps
+    for a, d in enumerate(dfos):
+        energy_terms = []
+        for j in range(len(d.polygons)):
+            t = offsets[a] + j
+            if 0 <= t < T:
+                energy_terms.append(p[(a,t)] * dt)
+        prob += pulp.lpSum(energy_terms) >= d.min_total_energy, f"min_tot_{a}"
+        prob += pulp.lpSum(energy_terms) <= d.max_total_energy, f"max_tot_{a}"
 
-    # pull out the bound
-    bound_value = pulp.value(model.objective)
+    # Solve
+    prob.solve(pulp.PULP_CBC_CMD(msg=False))
 
-    # (optional) you can extract a “solution_dict” in the same shape as schedule_offers
-    solution = {"p": {}, "pr_up": {}, "pr_dn": {}, "pb_up": {}, "pb_dn": {}, "s_up": {}, "s_dn": {}}
-    for v, dfo in enumerate(dfos):
-        solution["p"][v] = {i: p[v,i].varValue for i in range(len(dfo.polygons))}
-        solution["pr_up"][v] = {i: pru[v,i].varValue for i in range(len(dfo.polygons))}
-        solution["pr_dn"][v] = {i: prd[v,i].varValue for i in range(len(dfo.polygons))}
-        solution["pb_up"][v] = {i: pbu[v,i].varValue for i in range(len(dfo.polygons))}
-        solution["pb_dn"][v] = {i: pbd[v,i].varValue for i in range(len(dfo.polygons))}
-    return solution, bound_value
+    # --- Extract solution dict ---
+    sol = {k:{i:{} for i in range(A)} for k in ("p","pr_up","pr_dn","s_up","s_dn")}
+    for (a,t), var in p.items():      sol["p"][a][t]     = var.value()
+    for (a,t), var in pr_up.items():  sol["pr_up"][a][t] = var.value()
+    for (a,t), var in pr_dn.items():  sol["pr_dn"][a][t] = var.value()
+    for (a,t), var in s_up.items():   sol["s_up"][a][t]  = var.value()
+    for (a,t), var in s_dn.items():   sol["s_dn"][a][t]  = var.value()
+
+    return sol
+
+
+def schedule_dfos_theoretical(
+    dfos: list[DFO]
+) -> dict:
+    """
+    Wrapper to run theoretical optimization on raw DFOs.
+    """
+    return optimize_dfos_theoretical(
+        dfos,
+        start_date=config.SIMULATION_START_DATE,
+        simulation_days=config.SIMULATION_DAYS
+    )

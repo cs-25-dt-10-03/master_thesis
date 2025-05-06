@@ -23,7 +23,6 @@ def schedule_offers(offers, spot_prices=None, reserve_prices=None, activation_pr
             resolution=config.TIME_RESOLUTION
         )
 
-    print(f"Inde i scheduleren!!: {len(offers)}")
 
     if config.MODE == "joint":
         # All markets optimized together
