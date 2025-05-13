@@ -70,7 +70,7 @@ class ElectricVehicle:
         needed_energy = (target_soc - arrival_soc) * self.capacity
         if needed_energy <= 0:
             return None  # no charging needed
-        
+
         if resolution_seconds is None:
             resolution_seconds = config.TIME_RESOLUTION
 
@@ -91,9 +91,7 @@ class ElectricVehicle:
         energy_min = min(needed_energy * 0.95, max_possible_energy)
         energy_max = min(needed_energy * 1.05, max_possible_energy)
 
-
         profile = [TimeSlice(0,  charging_power) for _ in range(duration)]
-
 
         return Flexoffer(
             offer_id=self.vehicle_id,
