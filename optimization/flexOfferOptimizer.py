@@ -31,7 +31,7 @@ def optimize_offers(offers, *args, **kwargs):
         raise TypeError(f"Unknown offer type: {type(first)}")
 
 
-def optimize_flexoffers(offers, spot_prices, reserve_prices=None, activation_prices=None, indicators=None, fixed_p=None):
+def optimize_flexoffers(offers, spot_prices, reserve_prices=None, activation_prices=None, indicators=None, fixed_p=None, fixed_pr_up=None, fixed_pr_dn=None):
     """
     Build and solve LP or MILP scheduling for a set of FlexOffers.
 
@@ -67,7 +67,7 @@ def optimize_flexoffers(offers, spot_prices, reserve_prices=None, activation_pri
         for j, ts in enumerate(prof):
             t = offsets[a] + j
             if t < T:
-                p[(a,t)] = pulp.LpVariable(f"p_{a}_{t}", lowBound=0)
+                p[(a,t)] = pulp.LpVariable(f"p_{a}_{t}", lowBound=ts.min_power, upBound=ts.max_power)
 
     if fixed_p is not None:
         for (a,t), var in p.items():
@@ -83,9 +83,20 @@ def optimize_flexoffers(offers, spot_prices, reserve_prices=None, activation_pri
             for j in range(len(prof)):
                 t = offsets[a] + j
                 if t < T:
-                    pr_up[(a,t)] = pulp.LpVariable(f"pr_up_{a}_{t}", lowBound=0)
-                    pr_dn[(a,t)] = pulp.LpVariable(f"pr_dn_{a}_{t}", lowBound=0)
+                    # create reserve vars
+                    var_up = pulp.LpVariable(f"pr_up_{a}_{t}", lowBound=0)
+                    var_dn = pulp.LpVariable(f"pr_dn_{a}_{t}", lowBound=0)
 
+                    # if we have fixed reserve allocations from a prior pass, pin them
+                    if fixed_pr_up is not None:
+                        val_up = fixed_pr_up[a].get(t, 0.0)
+                        var_up.lowBound = var_up.upBound = val_up
+                    if fixed_pr_dn is not None:
+                        val_dn = fixed_pr_dn[a].get(t, 0.0)
+                        var_dn.lowBound = var_dn.upBound = val_dn
+
+                    pr_up[(a,t)] = var_up
+                    pr_dn[(a,t)] = var_dn
     if config.RUN_ACTIVATION:
         pb_up = {}
         pb_dn = {}
@@ -219,7 +230,9 @@ def optimize_dfos(
     reserve_prices: Union[pd.DataFrame, list]=None,
     activation_prices: Union[pd.DataFrame, list]=None,
     indicators: Union[pd.DataFrame, list]=None,
-    fixed_p: dict=None
+    fixed_p: dict=None, 
+    fixed_pr_up: dict=None, 
+    fixed_pr_dn: dict=None
 ):
 
     # —————————————————————————————————————————————————————————————
@@ -257,8 +270,20 @@ def optimize_dfos(
                 p[(a,t)] = pulp.LpVariable(f"p_{a}_{t}", lowBound=0)
                 # reserve
                 if config.RUN_RESERVE:
-                    pr_up[(a,t)] = pulp.LpVariable(f"pr_up_{a}_{t}", lowBound=0)
-                    pr_dn[(a,t)] = pulp.LpVariable(f"pr_dn_{a}_{t}", lowBound=0)
+                    # create reserve vars
+                    var_up = pulp.LpVariable(f"pr_up_{a}_{t}", lowBound=0)
+                    var_dn = pulp.LpVariable(f"pr_dn_{a}_{t}", lowBound=0)
+
+                    # if we have fixed reserve allocations from a prior pass, pin them
+                    if fixed_pr_up is not None:
+                        val_up = fixed_pr_up[a].get(t, 0.0)
+                        var_up.lowBound = var_up.upBound = val_up
+                    if fixed_pr_dn is not None:
+                        val_dn = fixed_pr_dn[a].get(t, 0.0)
+                        var_dn.lowBound = var_dn.upBound = val_dn
+
+                    pr_up[(a,t)] = var_up
+                    pr_dn[(a,t)] = var_dn
                 # activation & penalty
                 if config.RUN_ACTIVATION:
                     pb_up[(a,t)] = pulp.LpVariable(f"pb_up_{a}_{t}", lowBound=0)
@@ -381,6 +406,17 @@ def optimize_dfos(
         for (a,t), var in s_dn.items(): sol["s_dn"][a][t] = pulp.value(var)
 
     return sol
+
+
+
+
+
+
+
+
+
+
+
 
 
 

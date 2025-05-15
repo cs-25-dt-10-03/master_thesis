@@ -88,11 +88,9 @@ def get_price_at_datetime(datetime_value):
 
 
 def get_prices_in_range(start_timestamp, end_timestamp):
-
     df = loadSpotPriceData()
     start_datetime = pd.to_datetime(start_timestamp, unit="s")
     end_datetime = pd.to_datetime(end_timestamp, unit="s")
-    print(f"Starttt:DARE TIME ::: {start_datetime}, \n {end_datetime}")
     mask = (df['HourDK'] >= start_datetime) & (df['HourDK'] <= end_datetime)
     filtered_df = df.loc[mask]
     filtered_df = filtered_df.set_index('HourDK')
