@@ -3,7 +3,7 @@ import math
 import pandas as pd
 from typing import Tuple
 import numpy as np
-from helpers import dt_to_unix
+from helpers import dt_to_unix, round_datetime_to_resolution
 from scipy.stats import lognorm, beta
 from flexoffer_logic import Flexoffer, TimeSlice, DFO
 from config import config
@@ -38,69 +38,75 @@ class ElectricVehicle:
     def sample_day_profile(self, day_start):
         """
         Samples whether EV is active today and if yes, generates arrival/departure/SoC.
-        day_start: datetime
+        day_start: datetime at 00:00 of the day.
+        Now constrains window to 06:00–18:00 on the same calendar day.
         """
         # 80% chance weekday, 50% chance weekend
-        is_weekend = day_start.weekday() >= 5
-        active_prob = 0.8 if not is_weekend else 0.5
-        if np.random.rand() > active_prob:
-            return None  # EV is inactive today
+        is_weekend   = day_start.weekday() >= 5
+        active_prob  = 0.8 if not is_weekend else 0.5
+        # if np.random.rand() > active_prob:
+        #     return None  # EV is inactive today
 
-        # Arrival time (normal distribution centered 17:00)
-        arrival_hour = np.clip(np.random.normal(17, 2), 12, 22)
+        # --- ARRIVAL between 10:00 and 12:00 ---
+        arrival_hour = np.random.uniform(12, 14)
         arrival = day_start + timedelta(hours=arrival_hour)
 
-        # Departure time (normal distribution centered 7:00 next day)
-        departure_hour = np.clip(np.random.normal(7, 1.5), 5, 10)
-        departure = day_start + timedelta(days=1, hours=departure_hour)
+        # --- DEPARTURE between (arrival+1h) and 18:00 ---
+        earliest_dep = arrival_hour + 1
+        latest_dep   = 16
+        # if someone arrives at 17, earliest_dep=16, so departure_hour==16
+        if earliest_dep >= latest_dep:
+            departure_hour = latest_dep
+        else:
+            departure_hour = np.random.uniform(earliest_dep, latest_dep)
+        departure = day_start + timedelta(hours=departure_hour)
 
         # State of charge at arrival (beta distribution)
-        arrival_soc = np.random.beta(2, 5) * 0.8  # between 0 and 0.8
+        arrival_soc = np.random.beta(2, 5) * 0.8  # between 0 and 0.4
         arrival_soc = np.clip(arrival_soc, 0.1, 0.4)
 
         return arrival, departure, arrival_soc
 
+
     def create_synthetic_flex_offer(self, arrival, departure, arrival_soc, target_soc=0.9, resolution_seconds=None):
         """
-        Creates a FlexOffer from a sampled day profile.
-        arrival: datetime
-        departure: datetime
-        arrival_soc: float between 0 and 1
+        Creates a FlexOffer from a sampled day profile with time rounding.
         """
-        needed_energy = (target_soc - arrival_soc) * self.capacity
-        if needed_energy <= 0:
-            return None  # no charging needed
-
         if resolution_seconds is None:
             resolution_seconds = config.TIME_RESOLUTION
 
+        # Round arrival and departure
+        arrival_rounded = round_datetime_to_resolution(arrival, resolution_seconds, "down")
+        departure_rounded = round_datetime_to_resolution(departure, resolution_seconds, "up")
+
+        # Charging need
+        needed_energy = (target_soc - arrival_soc) * self.capacity
+        if needed_energy <= 0:
+            return None  # No charging needed
+
         charging_power = self.charging_power * self.charging_efficiency
-        hours_needed = needed_energy / charging_power
-        slots_needed = int(np.ceil(hours_needed * 3600 / resolution_seconds))
 
-        start = arrival
-        end = departure
+        duration = int((departure_rounded - arrival_rounded).total_seconds() // resolution_seconds)
 
-        duration = int((end - start).total_seconds() // resolution_seconds)
         if duration <= 0:
             return None
 
         max_energy_per_slot = charging_power * (resolution_seconds / 3600)
         max_possible_energy = duration * max_energy_per_slot
 
-        energy_min = min(needed_energy * 0.95, max_possible_energy)
-        energy_max = min(needed_energy * 1.05, max_possible_energy)
+        energy_min = max_possible_energy * 0.90
+        energy_max = max_possible_energy * 1.1
 
-        profile = [TimeSlice(0,  charging_power) for _ in range(duration)]
+        profile = [TimeSlice(0, charging_power) for _ in range(duration)]
 
         return Flexoffer(
             offer_id=self.vehicle_id,
-            earliest_start=dt_to_unix(start),
-            latest_start=dt_to_unix(end) - slots_needed * resolution_seconds,
-            end_time=dt_to_unix(end),
+            earliest_start=dt_to_unix(arrival_rounded),
+            latest_start=max(dt_to_unix(arrival_rounded), dt_to_unix(departure_rounded) - duration * resolution_seconds),
+            end_time=dt_to_unix(departure_rounded),
             profile=profile,
             duration=duration,
-            min_overall_alloc=energy_min,  # some flexibility
+            min_overall_alloc=energy_min,
             max_overall_alloc=energy_max
         )
 

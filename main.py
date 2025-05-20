@@ -10,7 +10,6 @@ def main():
     # 2. Evaluate all scenarios
     print("Starting evaluation...")
     evaluate_configurations()
-
     print("Evaluation finished!")
 
 

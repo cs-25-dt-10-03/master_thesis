@@ -1,34 +1,66 @@
 import pytest
-from datetime import datetime, timedelta
-from flexoffer_logic import Flexoffer, TimeSlice
-from aggregation.alignments import start_alignment_fast, balance_alignment_fast
-from helpers import dt_to_unix, dt_to_unix_seconds
+from flexoffer_logic import Flexoffer, TimeSlice, start_alignment_aggregate
+import time
+from config import config
 
-def create_test_flexoffer(offer_id, est_hour, lst_hour, et_hour, profile):
-    now = datetime.now().replace(minute=0, second=0, microsecond=0)
-    earliest_start = now.replace(hour=est_hour)
-    latest_start = now.replace(hour=lst_hour)
-    end_time = now.replace(hour=et_hour)
-    duration = len(profile)
-    min_energy = sum([p[0] for p in profile])
-    max_energy = sum([p[1] for p in profile])
-    profile_ts = [TimeSlice(min_val, max_val) for (min_val, max_val) in profile]
-    return Flexoffer(
-        offer_id,
-        dt_to_unix(earliest_start),
-        dt_to_unix(latest_start),
-        dt_to_unix(end_time),
-        profile_ts,
-        duration,
-        min_energy,
-        max_energy
+def make_flexoffer(offer_id, est_offset, duration, resolution, power_range, est_base=None):
+    if est_base is None:
+        est_base = int(time.time())
+    est = est_base + (est_offset * resolution)
+    lst = est + 2 * resolution
+    et = lst + duration * resolution
+
+    profile = [TimeSlice(power_range[0], power_range[1]) for _ in range(duration)]
+    min_energy = 5.0  # realistic bound
+    max_energy = 70.0
+
+    print(f"est defined as: {est}")
+    return Flexoffer(offer_id, est, lst, et, profile, duration, min_energy, max_energy)
+
+def test_start_alignment_basic_case():
+    resolution = config.TIME_RESOLUTION
+    est_base = 1600000000
+
+    fo1 = make_flexoffer(1, 0, 4, resolution, (1, 2), est_base)
+    fo2 = make_flexoffer(2, 1, 4, resolution, (2, 3), est_base)
+    fo3 = make_flexoffer(3, 2, 4, resolution, (0.5, 1.5), est_base)
+
+    aggregated = start_alignment_aggregate([fo1, fo2, fo3])
+
+    assert aggregated.get_est() == est_base
+
+    expected_lst = est_base + min(
+        fo1.get_lst() - fo1.get_est(),
+        fo2.get_lst() - fo2.get_est(),
+        fo3.get_lst() - fo3.get_est()
     )
+    assert aggregated.get_lst() == expected_lst
 
-def test_aggregate_flexoffers():
-    fo1 = create_test_flexoffer(1, 8, 9, 10, [(1.0, 2.0), (1.5, 2.5)])
-    fo2 = create_test_flexoffer(2, 9, 10, 11, [(0.5, 1.0), (1.0, 1.5)])
-    fo3 = create_test_flexoffer(3, 7, 8, 9, [(2.0, 3.0), (2.0, 3.0)])
+    expected_duration = max((fo.get_est() - est_base) // resolution + fo.get_duration() for fo in [fo1, fo2, fo3])
+
+    assert aggregated.get_duration() == expected_duration
+    assert len(aggregated.get_profile()) == expected_duration
+
+    agg_profile = aggregated.get_profile()
+    for t in range(expected_duration):
+        expected_min = 0.0
+        expected_max = 0.0
+        for fo in [fo1, fo2, fo3]:
+            offset = (fo.get_est() - est_base) // resolution
+            if 0 <= t - offset < fo.get_duration():
+                ts = fo.get_profile()[t - offset]
+                expected_min += ts.min_power
+                expected_max += ts.max_power
+        assert abs(agg_profile[t].min_power - expected_min) < 1e-6, f"Min mismatch at slot {t}"
+        assert abs(agg_profile[t].max_power - expected_max) < 1e-6, f"Max mismatch at slot {t}"
+
+    # Check declared bounds are feasible
+    total_energy_min = sum(ts.min_power for ts in agg_profile)
+    total_energy_max = sum(ts.max_power for ts in agg_profile)
+
+    assert aggregated.get_min_overall_alloc() <= total_energy_max + 1e-6
+    assert aggregated.get_max_overall_alloc() >= total_energy_min - 1e-6
     
-    aggregated_offer_start = start_alignment_fast([fo1, fo2, fo3])
-    aggregated_offer_balance = start_alignment_fast([fo1, fo2, fo3])
-    aggregated_offer_balance.print_flexoffer()
+    for fo in [fo1, fo2, fo3]:
+        fo.print_flexoffer()
+    aggregated.print_flexoffer()

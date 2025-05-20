@@ -157,12 +157,12 @@ def load_and_prepare_prices(start_ts, horizon_slots, resolution):
 
     if resolution == 3600:
         spot = pd.read_csv(os.path.join(config.DATA_FILEPATH, "Elspotprices.csv"), parse_dates=['HourDK'], usecols=['HourDK', 'SpotPriceDKK'])
-        mfrr = pd.read_csv(os.path.join(config.DATA_FILEPATH, "mFRR.csv"), parse_dates=['HourDK'], usecols=['HourDK', 'mFRR_UpPriceDKK', 'mFRR_DownPriceDKK'])
-        act = pd.read_csv(os.path.join(config.DATA_FILEPATH, "Regulating.csv"), parse_dates=['HourDK'], usecols=['HourDK', 'BalancingPowerPriceUpDKK', 'BalancingPowerPriceDownDKK'])
+        mfrr = pd.read_csv(os.path.join(config.DATA_FILEPATH, "mFRR.csv"), parse_dates=['HourDK'], usecols=['HourDK', 'mFRR_UpPriceDKK', 'mFRR_DownPriceDKK', "mFRR_UpPurchased", "mFRR_DownPurchased"])
+        act = pd.read_csv(os.path.join(config.DATA_FILEPATH, "Regulating.csv"), parse_dates=['HourDK'], usecols=['HourDK', 'BalancingPowerPriceUpDKK', 'BalancingPowerPriceDownDKK', 'ImbalancePriceDKK', "mFRRUpActBal", "mFRRDownActBal"])
     else:
         spot = pd.read_csv(os.path.join(config.DATA_FILEPATH, "Elspotprices_15min.csv"), parse_dates=['HourDK'], usecols=['HourDK', 'SpotPriceDKK'])
-        mfrr = pd.read_csv(os.path.join(config.DATA_FILEPATH, "mFRR_15min.csv"), parse_dates=['HourDK'], usecols=['HourDK', 'mFRR_UpPriceDKK', 'mFRR_DownPriceDKK'])
-        act = pd.read_csv(os.path.join(config.DATA_FILEPATH, "Regulating_15min.csv"), parse_dates=['HourDK'], usecols=['HourDK', 'BalancingPowerPriceUpDKK', 'BalancingPowerPriceDownDKK'])
+        mfrr = pd.read_csv(os.path.join(config.DATA_FILEPATH, "mFRR_15min.csv"), parse_dates=['HourDK'], usecols=['HourDK', 'mFRR_UpPriceDKK', 'mFRR_DownPriceDKK', "mFRR_UpPurchased", "mFRR_DownPurchased"])
+        act = pd.read_csv(os.path.join(config.DATA_FILEPATH, "Regulating_15min.csv"), parse_dates=['HourDK'], usecols=['HourDK', 'BalancingPowerPriceUpDKK', 'BalancingPowerPriceDownDKK', 'ImbalancePriceDKK', "mFRRUpActBal", "mFRRDownActBal"])
 
     spot = spot.drop_duplicates(subset='HourDK')
     mfrr = mfrr.drop_duplicates(subset='HourDK')
@@ -181,15 +181,21 @@ def load_and_prepare_prices(start_ts, horizon_slots, resolution):
     mfrr.set_index('HourDK', inplace=True)
     act.set_index('HourDK', inplace=True)
 
+    act["alpha_up"] = act["mFRRUpActBal"] / mfrr["mFRR_UpPurchased"]
+    act["alpha_dn"] = act["mFRRDownActBal"] / mfrr["mFRR_DownPurchased"]
+
     spot_prices = spot['SpotPriceDKK']
-    reserve_prices = mfrr[['mFRR_UpPriceDKK', 'mFRR_DownPriceDKK']]
-    activation_prices = act[['BalancingPowerPriceUpDKK', 'BalancingPowerPriceDownDKK']]
+    reserve_prices = mfrr[['mFRR_UpPriceDKK', 'mFRR_DownPriceDKK', "mFRR_UpPurchased", "mFRR_DownPurchased"]]
+    activation_prices = act[['BalancingPowerPriceUpDKK', 'BalancingPowerPriceDownDKK', "ImbalancePriceDKK", "alpha_up", "alpha_dn"]]
 
     delta_up = (activation_prices['BalancingPowerPriceUpDKK'] > np.nanmean(activation_prices['BalancingPowerPriceUpDKK'])).astype(int)
     delta_dn = (activation_prices['BalancingPowerPriceDownDKK'] > np.nanmean(activation_prices['BalancingPowerPriceDownDKK'])).astype(int)
     indicators = list(zip(delta_up, delta_dn))
 
     return spot_prices, reserve_prices, activation_prices, indicators
+
+
+
 
 
 def convertYearInfo(df: List[pd.DataFrame]) -> None:

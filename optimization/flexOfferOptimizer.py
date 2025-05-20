@@ -53,21 +53,37 @@ def optimize_flexoffers(offers, spot_prices, reserve_prices=None, activation_pri
     # 1) Offsets & horizon
     sim_start_ts = datetime.timestamp(pd.to_datetime(config.SIMULATION_START_DATE))
     T = len(spot_prices)           # only slots we actually have prices for
+    print(f"A i scheduleren [{A}]")
+    offsets = [int((fo.get_est() - sim_start_ts) / res) for fo in offers]
 
-    offsets = [
-        int((fo.get_est() - sim_start_ts) / res)
-        for fo in offers
-    ]
 
     prob = pulp.LpProblem("FlexOfferScheduling", pulp.LpMaximize)
+
+    #only one start time constraint
+    z = {}  # z[a,s]: binary start time selector
+    allowed_starts = {}  # Map of allowed start times for each offer
+    for a, fo in enumerate(offers):
+        allowed = fo.get_allowed_start_times()
+        allowed_starts[a] = allowed
+        for s_idx, s in enumerate(allowed):
+            z[(a, s_idx)] = pulp.LpVariable(f"z_{a}_{s_idx}", cat='Binary')
+
 
     p = {}
     for a, fo in enumerate(offers):
         prof = fo.get_profile()
-        for j, ts in enumerate(prof):
-            t = offsets[a] + j
-            if t < T:
-                p[(a,t)] = pulp.LpVariable(f"p_{a}_{t}", lowBound=ts.min_power, upBound=ts.max_power)
+        allowed = allowed_starts[a]
+        for s_idx, s in enumerate(allowed):
+            for j, ts in enumerate(prof):
+                t = int((s - sim_start_ts) / res) + j
+                if t < T:
+                    # Create power variable
+                    var = pulp.LpVariable(f"p_{a}_{s_idx}_{t}", lowBound=0, upBound=ts.max_power)
+                    p[(a, s_idx, t)] = var
+
+                    # Add conditional bounds linked to binary start selection
+                    prob += var <= ts.max_power * z[(a, s_idx)], f"max_bound_{a}_{s_idx}_{j}"
+                    prob += var >= ts.min_power * z[(a, s_idx)], f"min_bound_{a}_{s_idx}_{j}"
 
     if fixed_p is not None:
         for (a,t), var in p.items():
@@ -116,53 +132,90 @@ def optimize_flexoffers(offers, spot_prices, reserve_prices=None, activation_pri
     dt = config.TIME_RESOLUTION / 3600.0
     obj = []
 
-    for (a,t), var in p.items():
+    for (a, s_idx, t), var in p.items():
         spot = spot_prices.iloc[t]
         obj.append(-spot * var * dt)
+        print(spot)
         if config.RUN_RESERVE and reserve_prices is not None:
-            r_up, r_dn = reserve_prices.iloc[t]
-            obj.append(r_up * pr_up[(a,t)] * dt + r_dn * pr_dn[(a,t)] * dt)
-        if config.RUN_ACTIVATION and activation_prices is not None:
-            b_up, b_dn = activation_prices.iloc[t]
-            obj.append(b_up * pb_up[(a,t)] * dt + b_dn * pb_dn[(a,t)] * dt)
-            obj.append(-config.PENALTY * (s_up[(a,t)] + s_dn[(a,t)]))
+            if (a, t) in pr_up and (a, t) in pr_dn: 
+                r_up, r_dn, _, _ = reserve_prices.iloc[t]
+                obj.append(r_up * pr_up[(a,t)] * dt + r_dn * pr_dn[(a,t)] * dt)
+                if config.RUN_ACTIVATION and activation_prices is not None:
+                    b_up, b_dn, penalty, _, _ = activation_prices.iloc[t]
+                    d_up, d_dn = indicators[t]
+
+                    # Only apply activation price if actually activated
+                    b_up = b_up if d_up == 1 else 0
+                    b_dn = b_dn if d_dn == 1 else 0
+
+                    # Incremental activation revenue only
+                    obj.append((b_up - spot) * pb_up[(a,t)] * dt)
+                    obj.append((b_dn - spot) * pb_dn[(a,t)] * dt)
+                    obj.append(-penalty * (s_up[(a,t)] + s_dn[(a,t)]) * dt)
     prob += pulp.lpSum(obj)
 
     # Constraints
+    # --- only one start time ---
+    for a in range(len(offers)):
+        prob += pulp.lpSum(z[(a, s_idx)] for s_idx in range(len(allowed_starts[a]))) == 1
+
     # --- min total energy ---
     for a, fo in enumerate(offers):
         prof = fo.get_profile()
-        energy_terms = []
-        for j in range(len(prof)):
-            t = offsets[a] + j
-            if t < T:            # only include valid slots
-                energy_terms.append(p[(a, t)] * dt)
-        # only add the constraint if there are any terms
-        if energy_terms:
-            prob += (pulp.lpSum(energy_terms)
-                     >= fo.get_min_overall_alloc()), f"total_min_energy_{a}"
-            prob += (pulp.lpSum(energy_terms)
-                     <= fo.get_max_overall_alloc()), f"total_max_energy_{a}"
-            
+        min_energy = []
+        max_energy = []
+        for s_idx, s in enumerate(allowed_starts[a]):
+            for j in range(len(prof)):
+                t = int((s - sim_start_ts) / res) + j
+                if t < T and (a, s_idx, t) in p:
+                    min_energy.append(p[(a, s_idx, t)] * dt)
+                    max_energy.append(p[(a, s_idx, t)] * dt)
+        prob += pulp.lpSum(min_energy) >= fo.get_min_overall_alloc(), f"total_min_energy_{a}"
+        prob += pulp.lpSum(max_energy) <= fo.get_max_overall_alloc(), f"total_max_energy_{a}"
 
         # 2) slice‐by‐slice bounds
         for j, ts in enumerate(prof):
             t = offsets[a] + j
-            if t < T:
-                prob += p[(a,t)] >= ts.min_power
-                prob += p[(a,t)] <= ts.max_power
-
             if config.RUN_RESERVE:
                 if t < T:
-                    prob += pr_up[(a,t)] <= p[(a,t)]
-                    prob += pr_dn[(a,t)] <= ts.max_power - p[(a,t)]
+                    p_total = pulp.lpSum(p[(a, s_idx, t)] for s_idx in range(len(allowed_starts[a])) if (a, s_idx, t) in p)
+                    prob += pr_dn[(a,t)] <= ts.max_power - p_total
+                    prob += pr_up[(a,t)] <= ts.max_power
 
+
+                    # total_pr_up_t = lpSum(pr_up[(a,t)] for a in range(A) if (a,t) in pr_up)
+                    # total_pr_dn_t = lpSum(pr_dn[(a,t)] for a in range(A) if (a,t) in pr_dn)
+
+                    # market_up = reserve_prices["mFRR_UpPurchased"].iloc[t] * 1000  # MWh → kWh
+                    # market_dn = reserve_prices["mFRR_DownPurchased"].iloc[t] * 1000
+                    
+                    # prob += total_pr_up_t <= market_up
+                    # prob += total_pr_dn_t <= market_dn
+                    
             if config.RUN_ACTIVATION and indicators is not None:
                 if t < T:
+
+                    prob += pb_up[(a,t)] <= pr_up[(a,t)]
+                    prob += pb_dn[(a,t)] <= pr_dn[(a,t)]
+
                     d_up, d_dn = indicators[t]
+                    if d_up == 0:
+                        prob += pb_up[(a,t)] == 0
+                    if d_dn == 0:
+                        prob += pb_dn[(a,t)] == 0
+
                     prob += pb_up[(a,t)] + s_up[(a,t)] >= pr_up[(a,t)] * d_up
                     prob += pb_dn[(a,t)] + s_dn[(a,t)] >= pr_dn[(a,t)] * d_dn
 
+                    if j > 0:
+                        t_prev = offsets[a] + j - 1
+                        if (a, t) in pr_up and (a, t_prev) in pr_up:
+                            dt_minutes = config.TIME_RESOLUTION / 60
+
+                            ramp_limit_up = ts.max_power * (10 / dt_minutes)
+                            ramp_limit_dn = ts.max_power * (10 / dt_minutes)
+                            prob += pr_up[(a, t)] - pr_up[(a, t_prev)] <= ramp_limit_up
+                            prob += pr_dn[(a, t)] - pr_dn[(a, t_prev)] <= ramp_limit_dn
     # Solve
     solver = pulp.PULP_CBC_CMD(msg=False)
     prob.solve(solver)
@@ -182,8 +235,16 @@ def optimize_flexoffers(offers, spot_prices, reserve_prices=None, activation_pri
             sol["s_dn"][a]  = {}
 
     # Fill in the values for each variable you created
-    for (a, t), var in p.items():
-        sol["p"][a][t] = pulp.value(var)
+    for a in range(A):
+        sol["p"][a] = {}
+        for s_idx, s in enumerate(allowed_starts[a]):
+            for j in range(len(offers[a].get_profile())):
+                t = int((s - sim_start_ts) / res) + j
+                key = (a, s_idx, t)
+                if key in p:
+                    val = pulp.value(p[key])
+                    if val > 0:
+                        sol["p"][a][t] = val
 
     if config.RUN_RESERVE:
         for (a, t), var in pr_up.items():
@@ -200,6 +261,27 @@ def optimize_flexoffers(offers, spot_prices, reserve_prices=None, activation_pri
             sol["s_up"][a][t]  = pulp.value(var)
         for (a, t), var in s_dn.items():
             sol["s_dn"][a][t]  = pulp.value(var)
+
+    for a, fo in enumerate(offers):
+        # Find chosen start time
+        chosen_s_idx = None
+        for s_idx in range(len(fo.get_allowed_start_times())):
+            if pulp.value(z[(a, s_idx)]) > 0.5:
+                chosen_s_idx = s_idx
+                break
+
+        if chosen_s_idx is not None:
+            start_time = fo.get_allowed_start_times()[chosen_s_idx]
+            fo.set_scheduled_start_time(start_time)
+
+            allocation = [0.0] * fo.get_duration()
+            for j in range(fo.get_duration()):
+                t = int((start_time - sim_start_ts) / res) + j
+                key = (a, chosen_s_idx, t)
+                if key in p:
+                    val = pulp.value(p[key])
+                    allocation[j] = val
+            fo.set_scheduled_allocation(allocation)
 
     return sol
 

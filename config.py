@@ -38,39 +38,29 @@ class config:
     RUN_RESERVE = False
     RUN_ACTIVATION = False
 
-
-    ALIGNMENT = "balance"
+    #start, balance, balance_fast
+    ALIGNMENT = "start"
 
     # Which algorithm to use: 'ward', 'kmeans', 'gmm', 'dbscan'
     CLUSTER_METHOD = 'ward'
     # Hyperparameters for each:
     CLUSTER_PARAMS = {
-       # 'treeward': {'n_clusters': NUM_CLUSTERS, 'compute_full_tree':True},
         'ward':   {'n_clusters': NUM_CLUSTERS},
         'kmeans': {'n_clusters': NUM_CLUSTERS, 'random_state': 42},
         'gmm':    {'n_components': NUM_CLUSTERS, 'covariance_type': 'full', 'random_state': 42},
         'dbscan': {'eps': 0.5, 'min_samples': 5}
     }
 
-    DYNAMIC_CLUSTERING     = False
+    DYNAMIC_CLUSTERING     = True
     CLUSTER_K_MIN          = 2
     CLUSTER_K_MAX          = NUM_CLUSTERS
     CLUSTER_SELECTION_METRIC = "silhouette"
+
+    PARALLEL_CLUSTER_AGGREGATION = False
+    PARALLEL_N_JOBS = 4
+
     COST_SENSITIVE_CLUSTERING = False
     COST_FEATURE_WEIGHT       = 1.0
-
-
-    # # ── Advanced scheduling parameters ──────────────────────────────────────────
-    # NUM_SCENARIOS            = 20       # number of Monte-Carlo scenarios
-    # SCENARIO_SAMPLING_METHOD = "historical"  # or "monte_carlo"
-    
-    # # Bilevel settings (Stackelberg-style) – upper = aggregator, lower = EV owner
-    # USE_BILEVEL = False
-
-    # # Stochastic two-stage settings
-    # USE_STOCHASTIC = False
-    # STOCHASTIC_SCENARIO_METHOD = "price_sampling"
-    # STOCHASTIC_CONFIDENCE_LEVEL = 0.9
 
 
     @classmethod
@@ -78,7 +68,7 @@ class config:
         return np.array([
             offer.get_est(),
             offer.get_lst(),
-            offer.get_min_overall_alloc(),
+        #    offer.get_min_overall_alloc(),
         ])
 
     @classmethod
