@@ -4,6 +4,7 @@ from flexoffer_logic import DFO, DependencyPolygon, Point, agg2to1, aggnto1, dis
 from classes.electricVehicle import ElectricVehicle
 from optimization.DFOOptimizer import DFO_Optimization, DFO_MultiMarketOptimization, optimize_dfos
 from aggregation.clustering.Hierarchical_clustering import extract_features, cluster_offers, cluster_and_aggregate_flexoffers
+from evaluation.utils.plot_DFO import plot_dfo
 import pandas as pd
 
 @pytest.fixture
@@ -245,3 +246,11 @@ def test_optimize_dfos(ev1, ev2, ev3, charging_window_start, duration):
         print(f"\nDFO {i} Allocation: {alloc}")
 
     print("✅ Full DFO optimization test passed.")
+
+def test_plot_dfo_cpp(ev3, duration):
+
+    dfo = ev3.create_dfo(datetime.now(), duration, numsamples=10)
+
+    # Visual test
+    plot_dfo(dfo)
+
