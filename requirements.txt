@@ -4,6 +4,7 @@ datetime
 pulp
 scipy
 scikit-learn
+seaborn
 np
 matplotlib
 pytest

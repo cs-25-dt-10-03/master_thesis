@@ -67,8 +67,6 @@ def add_spot_prices_to_df(df, spot_series):
     return df_with_price
 
 
-
-
 def round_datetime_to_resolution(dt: datetime, resolution_seconds: int, direction: str = "down") -> datetime:
     seconds_since_hour = (dt - dt.replace(minute=0, second=0, microsecond=0)).total_seconds()
     if direction == "down":

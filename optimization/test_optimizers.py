@@ -1,169 +1,113 @@
-from pulp import LpProblem, LpMaximize, LpVariable, lpSum, PULP_CBC_CMD
-from datetime import datetime
-import pandas as pd
-import numpy as np
-import os
-
-from config import config
-from flexoffer_logic import Flexoffer
-from database.dataManager import loadSpotPriceData
+from typing import List, Dict, Optional
 import pulp
+from flexoffer_logic import Flexoffer, TimeSlice
+import pandas as pd
+import logging
+from config import config
 
-def sample_price_scenarios(horizon_len, num_scenarios):
+logger = logging.getLogger(__name__)
+
+class FO_Opt:
     """
-    Block-bootstrap S scenarios of length `horizon_len` from full historical series.
-    Returns:
-      scen_spots:   list of pandas.Series length horizon_len
-      scen_reserve: list of DataFrame [(Up,Down)] length horizon_len
-      scen_act:     list of DataFrame [(Up,Down)] length horizon_len
+    A simplified FlexOffer optimizer for spot market scheduling.
+    
+    Attributes:
+        offers (List[Flexoffer]): List of FlexOffer objects to schedule.
+        spot_prices (pd.Series): Spot market prices indexed by DateTime timestamps.
     """
-    # 1) Full history
-    full_spot = loadSpotPriceData()['SpotPriceDKK'].values
-    # mFRR full file
-    fname_mfrr = "mFRR_15min.csv" if config.TIME_RESOLUTION<3600 else "mFRR.csv"
-    full_mfrr = pd.read_csv(os.path.join(config.DATA_FILEPATH, fname_mfrr),
-                            usecols=['mFRR_UpPriceDKK','mFRR_DownPriceDKK']).values
-    # activation full file
-    fname_act = "Regulating_15min.csv" if config.TIME_RESOLUTION<3600 else "Regulating.csv"
-    full_act = pd.read_csv(os.path.join(config.DATA_FILEPATH, fname_act),
-                           usecols=['BalancingPowerPriceUpDKK','BalancingPowerPriceDownDKK']).values
+    
+    def __init__(self, 
+                 offers: List[Flexoffer],
+                 spot_prices: pd.Series):
+        # FlexOffers and corresponding spot prices (spot prices start at simulation start date from config)
+        self.offers = offers
+        self.spot_prices = spot_prices
 
-    L = len(full_spot)
-    scen_spots, scen_res, scen_act = [], [], []
-    for _ in range(num_scenarios):
-        # pick random start so that block of horizon_len fits
-        start = np.random.randint(0, L - horizon_len + 1)
-        scen_spots.append(pd.Series(full_spot[start:start+horizon_len]))
-        scen_res.append(pd.DataFrame(full_mfrr[start:start+horizon_len],
-                                     columns=['Up','Down']))
-        scen_act.append(pd.DataFrame(full_act[start:start+horizon_len],
-                                     columns=['Up','Down']))
-    return scen_spots, scen_res, scen_act
+        # Simulation resolution and start time
+        self.res = config.TIME_RESOLUTION
+        self.sim_start_ts = int(pd.to_datetime(config.SIMULATION_START_DATE).timestamp())
+        
+        # Time horizon (number of price slots)
+        self.T = len(spot_prices)
+        self.dt = self.res / 3600  # time step in hours
 
-def optimize_stochastic(
-    offers, spot_prices, reserve_prices=None,
-    activation_prices=None, indicators=None,
-    num_scenarios=10
-):
-    """
-    Two-stage stochastic:
-     - Stage 1: choose day-ahead p[a,t]
-     - Stage 2: recourse delta[a,t] settled at imbalance prices minus penalty
-    Objective: minimize expected total cost across spot, reserve, and activation.
-    """
-    # Prepare
-    S = num_scenarios
-    T = len(spot_prices)
-    dt = config.TIME_RESOLUTION / 3600.0
-    sim0 = datetime.timestamp(pd.to_datetime(config.SIMULATION_START_DATE))
-    offsets = [
-        int((fo.get_est() - sim0)/config.TIME_RESOLUTION)
-        for fo in offers
-    ]
+        # Dictionary to hold decision variables for power in spot market
+        self.power = {}
 
-    # Sample scenarios
-    scen_spots, scen_res, scen_act = sample_price_scenarios(T, S)
+        # Linear optimization problem instance
+        self.prob = pulp.LpProblem("FO_Scheduling", pulp.LpMaximize)
 
-    # Build MILP
-    prob = LpProblem("Stochastic_Scheduling", LpMaximize)
-    # Stage-1 variables
-    p = {}
-    r_up = {}    # reserve capacity up
-    r_dn = {}    # reserve capacity down
-    a_up = {}    # activation up
-    a_dn = {}    # activation down
-
-    for a, fo in enumerate(offers):
-        prof = fo.get_profile()
-        for j, ts in enumerate(prof):
-            t = offsets[a] + j
-            if t< T:
-                p[(a,t)]    = LpVariable(f"p_{a}_{t}",    lowBound=ts.min_power, upBound=ts.max_power)
-                r_up[(a,t)] = LpVariable(f"r_up_{a}_{t}", lowBound=0, upBound=ts.max_power)
-                r_dn[(a,t)] = LpVariable(f"r_dn_{a}_{t}", lowBound=0, upBound=ts.max_power)
-                a_up[(a,t)] = LpVariable(f"a_up_{a}_{t}", lowBound=0, upBound=ts.max_power)
-                a_dn[(a,t)] = LpVariable(f"a_dn_{a}_{t}", lowBound=0, upBound=ts.max_power)
-
-    # Stage-2 recourse: deviations on energy and reserve calls
-    δ_p   = {}
-    δ_ru  = {}
-    δ_rd  = {}
-    δ_au  = {}
-    δ_ad  = {}
-
-    for s in range(S):
-        for (a,t), var in p.items():
-            δ_p[(s,a,t)]  = LpVariable(f"dp_{s}_{a}_{t}", lowBound=-var.upBound, upBound=var.upBound)
-            δ_ru[(s,a,t)] = LpVariable(f"dru_{s}_{a}_{t}", lowBound=-r_up[(a,t)].upBound, upBound=r_up[(a,t)].upBound)
-            δ_rd[(s,a,t)] = LpVariable(f"drd_{s}_{a}_{t}", lowBound=-r_dn[(a,t)].upBound, upBound=r_dn[(a,t)].upBound)
-            δ_au[(s,a,t)] = LpVariable(f"dau_{s}_{a}_{t}", lowBound=-a_up[(a,t)].upBound, upBound=a_up[(a,t)].upBound)
-            δ_ad[(s,a,t)] = LpVariable(f"dad_{s}_{a}_{t}", lowBound=-a_dn[(a,t)].upBound, upBound=a_dn[(a,t)].upBound)
-
-        # preserve totals (no net energy creation)
-        for a, fo in enumerate(offers):
+    def create_variables(self):
+        """
+        Initializes power variables for each FlexOffer at each relevant time index.
+        Variables are constrained by the offer's min/max power per time slice.
+        """
+        for a, fo in enumerate(self.offers):
             prof = fo.get_profile()
-            prob += lpSum(δ_p[(s,a,offsets[a]+j)] for j in range(len(prof))) == 0
-            prob += lpSum(δ_ru[(s,a,offsets[a]+j)] for j in range(len(prof))) == 0
-            prob += lpSum(δ_rd[(s,a,offsets[a]+j)] for j in range(len(prof))) == 0
+            for j, ts in enumerate(prof):
+                # Compute offset from simulation start to FlexOffer start
+                # important for proper indexing when we create decision variables
+                offset = int((fo.get_est() - self.sim_start_ts) / self.res)
+                t = offset + j
+                # Create a decision power variable for time index t
+                self.power[(a, t)] = pulp.LpVariable(f"p_{a}_{t}", lowBound=0, upBound=ts.max_power)
 
-    # Energy constraints stage-1
-    for a, fo in enumerate(offers):
-        prof = fo.get_profile()
-        prob += lpSum(p[(a,offsets[a]+j)]*dt for j in range(len(prof))) >= fo.get_min_overall_alloc()
-        prob += lpSum(p[(a,offsets[a]+j)]*dt for j in range(len(prof))) <= fo.get_max_overall_alloc()
+    def add_constraints(self):
+        """
+        Adds energy constraints per FlexOffer:
+        - Total allocated energy must lie within [min_alloc, max_alloc].
+        """
+        for a, fo in enumerate(self.offers):
+            prof = fo.get_profile()
+            terms = []
+            for j, ts in enumerate(prof):
+                t = int((fo.get_est() - self.sim_start_ts) / self.res) + j
+                # Each time slice contributes power × time to the total energy
+                terms.append(self.power[(a,t)] * self.dt)
 
-    # Reserve capacity constraints
-    # r_up <= p, r_dn <= max_power - p   (can only reserve what you’re not charging)
-    for (a,t), var in p.items():
-        prof = offers[a].get_profile()
-        max_pow = prof[t-offsets[a]].max_power
-        prob += r_up[(a,t)] <= var
-        prob += r_dn[(a,t)] <= max_pow - var
+            # Add lower and upper bound constraints
+            self.prob += pulp.lpSum(terms) >= fo.get_min_overall_alloc()
+            self.prob += pulp.lpSum(terms) <= fo.get_max_overall_alloc()
 
-    # Activation bounds: a_up <= r_up, a_dn <= r_dn
-    for (a,t), ru_var in r_up.items():
-        prob += a_up[(a,t)] <= ru_var
-        prob += a_dn[(a,t)] <= r_dn[(a,t)]
+    def build_objective(self):
+        """
+        Builds the profit-maximization objective based on spot prices.
+        Lower spot prices yield higher cost (hence negative term).
+        """
+        obj = []
+        for (a, t), var in self.power.items():
+            spot = self.spot_prices.iloc[t]
+            obj.append(-spot * var * self.dt)
+        self.prob += pulp.lpSum(obj)
 
-    # Objective: **minimize** expected total cost
-    # → maximize negative cost:
-    obj = []
+    def solve(self):
+        """
+        Solves the MILP problem using CBC solver (default via PuLP).
+        """
+        self.prob.solve(pulp.PULP_CBC_CMD(msg=False))
 
-    # 1) Day‐ahead cost: spot + reserve capacity fees
-    for (a,t), var in p.items():
-        obj.append(-spot_prices.iloc[t] * var * dt)
-        obj.append(-reserve_prices.iloc[t]['mFRR_UpPriceDKK']  * r_up[(a,t)] * dt)
-        obj.append(-reserve_prices.iloc[t]['mFRR_DownPriceDKK']* r_dn[(a,t)] * dt)
+    def extract_solution(self):
+        """
+        Extracts the optimal schedule and updates each FlexOffer with:
+        - scheduled allocation per timeslice
+        """
+        for a, fo in enumerate(self.offers):
+            if fo.get_scheduled_allocation() is not None:
+                allocation = [0.0] * fo.get_duration()
+                prof = fo.get_profile()
+                for j, ts in enumerate(prof):
+                    t = int((fo.get_est() - self.sim_start_ts) / self.res) + j
+                    if (a, t) in self.power:
+                        allocation[j] = pulp.value(self.power[(a, t)])
+                fo.set_scheduled_allocation(allocation)
 
-    # 2) Expected recourse cost: activation fees + penalty on any mismatch
-    penalty = config.PENALTY
-    for s in range(S):
-        sp = scen_spots[s]
-        rr = scen_res[s]
-        ac = scen_act[s]
-        for (a,t), var in p.items():
-            # recourse on energy: settled at activation price
-            obj.append(-ac.iloc[t]['Up']  * (var + δ_p[(s,a,t)]) * dt)
-            obj.append(-ac.iloc[t]['Down']* (var + δ_p[(s,a,t)]) * dt)
-            # recourse on reserve calls: no separate recourse in mFRR
-            # penalty for any shift
-            obj.append(-penalty * abs(δ_p[(s,a,t)]) * dt)
-
-    prob += lpSum(obj)
-
-    # Solve
-    prob.solve(PULP_CBC_CMD(msg=False))
-
-    # Build solution dict
-    sol = {'p':{}, 'pr_up':{}, 'pr_dn':{}, 'pb_up':{}, 'pb_dn':{}, 's_up':{}, 's_dn':{}}
-    for a,_ in enumerate(offers):
-        sol['p'][a], sol['pr_up'][a], sol['pr_dn'][a] = {},{},{}
-        sol['pb_up'][a], sol['pb_dn'][a], sol['s_up'][a], sol['s_dn'][a] = {},{},{},{}
-    for (a,t), var in p.items():
-        sol['p'][a][t] = var.value()
-        sol['pr_up'][a][t] = r_up[(a,t)].value()
-        sol['pr_dn'][a][t] = r_dn[(a,t)].value()
-        sol['pb_up'][a][t] = a_up[(a,t)].value()
-        sol['pb_dn'][a][t] = a_dn[(a,t)].value()
-        # no explicit s_up/s_dn in stochastic
-    return sol
+    def run(self):
+        """
+        Runs the full optimization pipeline: define variables, add constraints,
+        build the objective, solve the LP, and write solution into offers.
+        """
+        self.create_variables()
+        self.add_constraints()
+        self.build_objective()
+        self.solve()
+        self.extract_solution()
