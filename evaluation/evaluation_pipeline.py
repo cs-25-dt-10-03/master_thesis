@@ -4,7 +4,7 @@
 from time import perf_counter
 from evaluation.fleet_simulator import simulate_fleet
 import json
-from optimization.test_optimizers import BaseOptimizer
+from optimization.FlexOfferOptimizer import BaseOptimizer
 from typing import List, Dict, Any
 from classes.electricVehicle import ElectricVehicle
 import os
@@ -18,7 +18,7 @@ from datetime import timedelta, datetime
 from database.dataManager import load_and_prepare_prices
 import matplotlib.pyplot as plt
 from evaluation.utils.plot_flexOffer import plot_flexoffer, plot_flexoffer_aggregation
-from evaluation.metrics import greedy_baseline_schedule, compute_profit, compute_financial_metrics, compute_mean_runtimes, theoretical_optimal_schedule
+from evaluation.metrics import greedy_baseline_schedule, compute_profit, compute_financial_metrics, compute_mean_runtimes
 from itertools import product
 from helpers import sol_to_df, add_spot_prices_to_df
 from flexoffer_logic import Flexoffer, DFO, TimeSlice, set_time_resolution
