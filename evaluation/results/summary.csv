@@ -1,2 +1,9 @@
-TYPE,MODE,RUN_SPOT,RUN_RESERVE,RUN_ACTIVATION,NUM_EVS,TIME_RES,NUM_CLUSTERS,ALIGNMENT,CLUSTER_METHOD,DYNAMIC_CLUSTERING,PARALLEL_CLUSTER_AGGREGATION,runtime_scheduling,runtime_aggregation,pct_total_saved,pct_saved_spot,pct_gain_res,pct_gain_act,pct_of_optimal
-FO,joint,True,False,False,2,3600,1,start,ward,False,False,0.021,0.003,12.28,100.0,0.0,0.0,114.0
+TYPE,MODE,RUN_SPOT,RUN_RESERVE,RUN_ACTIVATION,NUM_EVS,TIME_RES,NUM_CLUSTERS,ALIGNMENT,CLUSTER_METHOD,DYNAMIC_CLUSTERING,PARALLEL_CLUSTER_AGGREGATION,runtime_simulation,runtime_price_loading,runtime_scheduling,runtime_aggregation,pct_total_saved,pct_saved_spot,pct_gain_res,pct_gain_act,pct_of_optimal
+FO,joint,True,False,False,10,3600,2,start,ward,False,False,0.007136000087484717,0.08386170002631843,0.069,0.026,4.12,100.0,0.0,0.0,99.56
+FO,joint,True,True,True,10,3600,2,start,ward,False,False,0.0041745000053197145,2.3800181224942207e-05,0.079,0.03,93.05,4.43,10.77,84.8,65.36
+FO,sequential_reserve_first,True,False,False,10,3600,2,start,ward,False,False,0.007824299857020378,1.1200085282325745e-05,0.056,0.043,4.12,100.0,0.0,0.0,99.56
+FO,sequential_reserve_first,True,True,True,10,3600,2,start,ward,False,False,0.0026151000056415796,5.899928510189056e-06,0.079,0.023,93.05,4.43,10.77,84.8,65.36
+DFO,joint,True,False,False,10,3600,2,start,ward,False,False,0.0057987000327557325,9.09995287656784e-06,0.195,0.016,45.33,100.0,0.0,0.0,97.19
+DFO,joint,True,True,True,10,3600,2,start,ward,False,False,0.009066400118172169,1.6399892047047615e-05,0.217,0.036,45.33,100.0,0.0,0.0,97.19
+DFO,sequential_reserve_first,True,False,False,10,3600,2,start,ward,False,False,0.004459799965843558,1.0899966582655907e-05,0.054,0.013,45.33,100.0,0.0,0.0,97.19
+DFO,sequential_reserve_first,True,True,True,10,3600,2,start,ward,False,False,0.004486700054258108,9.299954399466515e-06,0.08,0.016,45.33,100.0,0.0,0.0,97.19

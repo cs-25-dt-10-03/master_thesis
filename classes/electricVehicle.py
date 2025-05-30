@@ -42,18 +42,18 @@ class ElectricVehicle:
         Now constrains window to 06:00–18:00 on the same calendar day.
         """
         # 80% chance weekday, 50% chance weekend
-        is_weekend   = day_start.weekday() >= 5
-        active_prob  = 0.8 if not is_weekend else 0.5
+        # is_weekend   = day_start.weekday() >= 5
+        # active_prob  = 0.8 if not is_weekend else 0.5
         # if np.random.rand() > active_prob:
         #     return None  # EV is inactive today
 
         # --- ARRIVAL between 10:00 and 12:00 ---
-        arrival_hour = np.random.uniform(12, 14)
+        arrival_hour = np.random.uniform(9, 12)
         arrival = day_start + timedelta(hours=arrival_hour)
 
         # --- DEPARTURE between (arrival+1h) and 18:00 ---
-        earliest_dep = arrival_hour + 1
-        latest_dep   = 16
+        earliest_dep = arrival_hour + 5
+        latest_dep   = 18
         # if someone arrives at 17, earliest_dep=16, so departure_hour==16
         if earliest_dep >= latest_dep:
             departure_hour = latest_dep
@@ -63,52 +63,60 @@ class ElectricVehicle:
 
         # State of charge at arrival (beta distribution)
         arrival_soc = np.random.beta(2, 5) * 0.8  # between 0 and 0.4
-        arrival_soc = np.clip(arrival_soc, 0.1, 0.4)
+        arrival_soc = np.clip(arrival_soc, 0.1, 0.3)
 
         return arrival, departure, arrival_soc
 
-
     def create_synthetic_flex_offer(self, arrival, departure, arrival_soc, target_soc=0.9, resolution_seconds=None):
-        """
-        Creates a FlexOffer from a sampled day profile with time rounding.
-        """
         if resolution_seconds is None:
             resolution_seconds = config.TIME_RESOLUTION
+
+        dt_hours = resolution_seconds / 3600.0
+        power = self.charging_power * self.charging_efficiency
+        energy_per_slot = power * dt_hours
 
         # Round arrival and departure
         arrival_rounded = round_datetime_to_resolution(arrival, resolution_seconds, "down")
         departure_rounded = round_datetime_to_resolution(departure, resolution_seconds, "up")
 
-        # Charging need
-        needed_energy = (target_soc - arrival_soc) * self.capacity
-        if needed_energy <= 0:
-            return None  # No charging needed
+        est = dt_to_unix(arrival_rounded)
+        et  = dt_to_unix(departure_rounded)
 
-        charging_power = self.charging_power * self.charging_efficiency
-
-        duration = int((departure_rounded - arrival_rounded).total_seconds() // resolution_seconds)
-
-        if duration <= 0:
+        # Total time available (slots)
+        total_slots = int((et - est) // resolution_seconds)
+        if total_slots <= 0:
             return None
 
-        max_energy_per_slot = charging_power * (resolution_seconds / 3600)
-        max_possible_energy = duration * max_energy_per_slot
+        # Energy need
+        needed_energy = (target_soc - arrival_soc) * self.capacity
+        if needed_energy <= 0:
+            return None
 
-        energy_min = max_possible_energy * 0.90
-        energy_max = max_possible_energy * 1.1
+        # Minimum slots needed to meet energy need at full power
+        min_required_slots = math.ceil(needed_energy / energy_per_slot)
+        if min_required_slots > total_slots:
+            return None
 
-        profile = [TimeSlice(0, charging_power) for _ in range(duration)]
+        # Compute latest start time such that min_required_slots still fit before et
+        lst = et - min_required_slots * resolution_seconds
+
+        # Build FO
+        # max power (kW) in each slice:
+        profile = [TimeSlice(0.0, power) for _ in range(min_required_slots)]
+        min_alloc = needed_energy
+        max_alloc = min_alloc * 1.1
 
         return Flexoffer(
             offer_id=self.vehicle_id,
-            earliest_start=dt_to_unix(arrival_rounded),
-            latest_start=max(dt_to_unix(arrival_rounded), dt_to_unix(departure_rounded) - duration * resolution_seconds),
-            end_time=dt_to_unix(departure_rounded),
+            earliest_start=est,
+            latest_start=lst,
+            end_time=et,
             profile=profile,
-            duration=duration,
-            min_overall_alloc=energy_min,
-            max_overall_alloc=energy_max
+            duration=min_required_slots,
+            min_overall_alloc=min_alloc,
+            max_overall_alloc=max_alloc
         )
+
 
     def sample_start_times(self) -> Tuple[datetime, datetime]:
         arrival_mu = np.log(18)
@@ -183,52 +191,6 @@ class ElectricVehicle:
             min_overall_alloc=min_energy,
             max_overall_alloc=max_energy
         )
-
-    # def create_synthetic_flex_offer(self, tec_fo: bool) -> Flexoffer:
-    #     earliest_start, end_time = self.sample_start_times()
-
-    #     # Determine required charging energy
-    #     required_energy = (self.soc_max - self.current_soc) * self.capacity if tec_fo else 0
-
-    #     # Compute necessary charging duration
-    #     if required_energy > 0:
-    #         charging_time_hours = required_energy / (self.charging_power * self.charging_efficiency)
-    #     else:
-    #         charging_time_hours = 0
-
-    #     time_slot_resolution = config.TIME_RESOLUTION / 3600
-    #     charging_time_hours = round(charging_time_hours / time_slot_resolution) * time_slot_resolution
-
-    #     # Compute the latest possible start time (ensuring it’s aligned to the time resolution)
-    #     latest_start = end_time - timedelta(hours=charging_time_hours)
-    #     latest_start = latest_start.replace(second=0, microsecond=0)  # Remove seconds/milliseconds
-    #     remainder = latest_start.minute % (config.TIME_RESOLUTION // 60)
-    #     latest_start -= timedelta(minutes=remainder)  # Snap to valid resolution step
-
-    #     # Generate time slices for charging profile
-    #     duration = int((end_time - earliest_start).total_seconds() // config.TIME_RESOLUTION)
-    #     max_energy_per_slot = self.charging_power * (config.TIME_RESOLUTION / 3600) * self.charging_efficiency
-    #     energy_profile = [TimeSlice(0.0, max_energy_per_slot) for _ in range(duration)]
-
-    #     # Define min and max overall allocation
-    #     min_energy = self.soc_min * self.capacity if tec_fo else 0
-    #     max_energy = self.soc_max * self.capacity if tec_fo else 0
-
-    #     # Debugging checks
-    #     assert latest_start < end_time, f"Error: latest_start ({latest_start}) should not equal end_time ({end_time})!"
-    #     assert required_energy >= 0, f"Error: required_energy is negative ({required_energy})!"
-    #     assert charging_time_hours >= time_slot_resolution, f"Error: charging_time ({charging_time_hours} h) is too small!"
-
-    #     return Flexoffer(
-    #         offer_id=self.vehicle_id,
-    #         earliest_start=dt_to_unix(earliest_start),
-    #         latest_start=dt_to_unix(latest_start),
-    #         end_time=dt_to_unix(end_time),
-    #         profile=energy_profile,
-    #         duration=duration,
-    #         min_overall_alloc=min_energy,
-    #         max_overall_alloc=max_energy
-    #     )
 
     def create_dfo(self, charging_window_start: datetime, duration, numsamples) -> DFO:
 

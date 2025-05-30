@@ -5,6 +5,7 @@ import os
 import datetime
 from config import config
 import numpy as np
+from functools import lru_cache
 
 
 def fetchEvData() -> List[pd.DataFrame]:
@@ -147,6 +148,7 @@ def fetch_Regulating_by_range(start_date, end_date):
 
 
 # --- Har lige lavet en data loader der læser alle priser sammen. Gør det lidt nemmere for optimizeren ---
+@lru_cache(maxsize=8)
 def load_and_prepare_prices(start_ts, horizon_slots, resolution):
     """
     Load spot and mFRR CSV, then slice exact horizon.

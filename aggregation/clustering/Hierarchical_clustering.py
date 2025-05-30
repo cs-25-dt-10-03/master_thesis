@@ -4,6 +4,7 @@ from sklearn.cluster import AgglomerativeClustering, KMeans, DBSCAN
 from sklearn.mixture import GaussianMixture
 import os
 import multiprocessing
+from time import time
 from sklearn.preprocessing import StandardScaler
 from config import config
 from datetime import timedelta
@@ -23,6 +24,7 @@ from database.dataManager import load_and_prepare_prices
 CLUSTER_METHOD = config.CLUSTER_METHOD
 CLUSTER_PARAMS = config.CLUSTER_PARAMS
 
+MAX_JOBS = min(multiprocessing.cpu_count(), config.PARALLEL_N_JOBS)
 
 def extract_features(offer):
     """
@@ -31,32 +33,9 @@ def extract_features(offer):
     """
     if isinstance(offer, Flexoffer):
         feats = config.define_clustering_features_fo(offer)
-        if config.COST_SENSITIVE_CLUSTERING:
-            start_ts = pd.to_datetime(offer.get_est(), unit="s")
-            dur_slots = offer.get_duration()
-            spot_series, _, _, _ = load_and_prepare_prices(
-                start_ts=start_ts,
-                horizon_slots=dur_slots,
-                resolution=config.TIME_RESOLUTION
-            )
-            avg_price = spot_series.mean()
-            price_feat = config.COST_FEATURE_WEIGHT * avg_price
-            feats = np.concatenate([feats, [price_feat]])
         return feats
     elif isinstance(offer, DFO):
         feats = config.define_clustering_features_dfo(offer)
-        if config.COST_SENSITIVE_CLUSTERING:
-            start_ts = pd.to_datetime(offer.get_est(), unit="s")
-            end_ts   = pd.to_datetime(offer.get_et(), unit="s")
-            dur_slots = int((end_ts - start_ts).total_seconds() // config.TIME_RESOLUTION)
-            spot_series, _, _, _ = load_and_prepare_prices(
-                start_ts=start_ts,
-                horizon_slots=dur_slots,
-                resolution=config.TIME_RESOLUTION
-            )
-            avg_price = spot_series.mean()
-            price_feat = config.COST_FEATURE_WEIGHT * avg_price
-            feats = np.concatenate([feats, [price_feat]])
         return feats
     else:
         raise ValueError("Unknown offer type")
@@ -73,7 +52,10 @@ def cluster_offers(offers, n_clusters):
     output:
         list of clusters of length n_clusters and corresponding labels.
     """
+    print(f"[Clustering] Extracting features for {len(offers)} offers...")
+
     X = np.vstack([extract_features(o) for o in offers])
+    print("[Clustering] Scaling features...")
     X = StandardScaler().fit_transform(X)
 
     method = CLUSTER_METHOD.lower()
@@ -84,6 +66,8 @@ def cluster_offers(offers, n_clusters):
         params['n_clusters'] = min(n_clusters, len(offers))
     elif method == 'gmm':
         params['n_components'] = min(n_clusters, len(offers))
+
+    print(f"[Clustering] Running {method.upper()}")
 
 
     if method == 'ward':
@@ -98,6 +82,7 @@ def cluster_offers(offers, n_clusters):
         raise ValueError(f"Unsupported CLUSTER_METHOD: {CLUSTER_METHOD}")
 
     labels = model.fit_predict(X)
+    print(f"[Clustering] {method.upper()} completed")
 
    # DBSCAN labels noise as -1, so build buckets from the actual label set
     unique_labels = sorted(set(labels))
@@ -132,7 +117,10 @@ def aggregate_clusters(clustered_offers):
             else:
                 afo = start_alignment_fast(flexoffers)
         if dfos and config.TYPE == 'DFO':
-            afo = aggnto1(dfos, 4)
+            if config.PARALLEL_CLUSTER_AGGREGATION:
+                return aggregate_clusters_parallel_dfo(clustered_offers, numsamples=4, n_jobs=MAX_JOBS)
+            else:
+                afo = aggnto1(cluster, 4)
         aggregated_offers.append(afo)
     return aggregated_offers
 
@@ -160,9 +148,6 @@ def cluster_and_aggregate_flexoffers(offers, n_clusters):
             if config.CLUSTER_SELECTION_METRIC == "silhouette" and sil is not None:
                 if sil > best_score:
                     best_score, best_k = sil, k
-            elif config.CLUSTER_SELECTION_METRIC == "davies_bouldin" and db is not None:
-                if db < best_score:
-                    best_score, best_k = db, k
         # fallback if nothing found
         if best_k is None:
             best_k = n_clusters
@@ -182,11 +167,9 @@ def cluster_and_aggregate_flexoffers(offers, n_clusters):
 
 
     if config.PARALLEL_CLUSTER_AGGREGATION:
-        max_jobs = min(multiprocessing.cpu_count(), len(clustered_flexoffers), config.PARALLEL_N_JOBS)
-        aggregated_fos = aggregate_clusters_parallel(clustered_flexoffers, num_candidates=5, n_jobs=max_jobs)
+        aggregated_fos = aggregate_clusters_parallel(clustered_flexoffers, num_candidates=5, n_jobs=MAX_JOBS)
     else:
         aggregated_fos = aggregate_clusters(clustered_flexoffers)
-
     return aggregated_fos
 
 
@@ -214,16 +197,36 @@ def needed_for_compliance(offer):
 
 
 def aggregate_cluster(c, num_candidates):
-    """
-    Aggregates a single cluster of FlexOffers.
-    """
     print(f"[INFO] Aggregating cluster of size {len(c)} in process {os.getpid()}")
-    
-    if (config.ALIGNMENT == 'balance_fast'):
-        return balance_alignment_tree_merge(c, num_candidates)
-    else: 
-        return start_alignment_fast(c)
 
+    # Separate FO vs DFO
+    flexoffers = [o for o in c if isinstance(o, Flexoffer)]
+    dfos       = [o for o in c if isinstance(o, DFO)]
+
+    # DFO aggregation shortcut
+    if dfos and config.TYPE == 'DFO':
+        return aggnto1(dfos, num_candidates)
+
+    # FO aggregation according to configured alignment
+    mode = config.ALIGNMENT.lower()
+    if mode == 'start':
+        return start_alignment_fast(flexoffers)
+    elif mode == 'balance':
+        return balance_alignment_aggregate(flexoffers, num_candidates)
+    elif mode == 'balance_fast':
+        return balance_alignment_tree_merge(flexoffers, num_candidates)
+    else:
+        raise ValueError(f"Unsupported ALIGNMENT mode: {config.ALIGNMENT}")
+
+
+def aggregate_cluster_dfo(cluster, numsamples):
+    print(f"[INFO] Aggregating DFO cluster of size {len(cluster)} in process {os.getpid()}")
+    return aggnto1(cluster, numsamples)
+
+def aggregate_clusters_parallel_dfo(clusters, numsamples=4, n_jobs=-1):
+    return Parallel(n_jobs=n_jobs)(
+        delayed(aggregate_cluster_dfo)(cluster, numsamples) for cluster in clusters
+    )
 
 def aggregate_clusters_parallel(clusters, num_candidates=5, n_jobs=-1):
 

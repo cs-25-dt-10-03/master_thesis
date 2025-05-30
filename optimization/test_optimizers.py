@@ -1,113 +1,144 @@
-from typing import List, Dict, Optional
 import pulp
-from flexoffer_logic import Flexoffer, TimeSlice
 import pandas as pd
-import logging
+from typing import List, Union, Dict
+from flexoffer_logic import Flexoffer, DFO
+from config import config
+from optimization.markets.spot_market import SpotMarket
+from optimization.markets.reserve_market import ReserveMarket
+from optimization.markets.activation_market import ActivationMarket
+
+import pulp
 from config import config
 
-logger = logging.getLogger(__name__)
+# Market Module Refactor — Includes Spot, Reserve, and Activation markets
+# Supports both FlexOffers and DFOs
 
-class FO_Opt:
-    """
-    A simplified FlexOffer optimizer for spot market scheduling.
-    
-    Attributes:
-        offers (List[Flexoffer]): List of FlexOffer objects to schedule.
-        spot_prices (pd.Series): Spot market prices indexed by DateTime timestamps.
-    """
-    
-    def __init__(self, 
-                 offers: List[Flexoffer],
-                 spot_prices: pd.Series):
-        # FlexOffers and corresponding spot prices (spot prices start at simulation start date from config)
+import pulp
+from config import config
+
+class BaseOptimizer:
+    def __init__(self, offers, spot_prices, reserve_prices, activation_prices, indicators):
         self.offers = offers
         self.spot_prices = spot_prices
+        self.reserve_prices = reserve_prices
+        self.activation_prices = activation_prices
+        self.indicators = indicators
 
-        # Simulation resolution and start time
-        self.res = config.TIME_RESOLUTION
-        self.sim_start_ts = int(pd.to_datetime(config.SIMULATION_START_DATE).timestamp())
-        
-        # Time horizon (number of price slots)
         self.T = len(spot_prices)
-        self.dt = self.res / 3600  # time step in hours
+        self.dt = config.TIME_RESOLUTION / 3600.0
+       
+        self.sim_start_ts = int(pd.to_datetime(config.SIMULATION_START_DATE).timestamp())
+        self.offsets = [int((fo.get_est() - self.sim_start_ts) / config.TIME_RESOLUTION) for fo in offers]
 
-        # Dictionary to hold decision variables for power in spot market
-        self.power = {}
+        self.prob = pulp.LpProblem("MarketOptimization", pulp.LpMaximize)
+        self.p = {}
+        self.pr_up = {}
+        self.pr_dn = {}
+        self.pb_up = {}
+        self.pb_dn = {}
+        self.s_up = {}
+        self.s_dn = {}
+        self.objective_terms = []
 
-        # Linear optimization problem instance
-        self.prob = pulp.LpProblem("FO_Scheduling", pulp.LpMaximize)
+    def build_modules(self):
+        modules = []
+        modules.append(SpotMarket(self.spot_prices))
+        modules.append(ReserveMarket(self.reserve_prices))
+        modules.append(ActivationMarket(self.activation_prices, self.indicators))
+        return modules
 
-    def create_variables(self):
-        """
-        Initializes power variables for each FlexOffer at each relevant time index.
-        Variables are constrained by the offer's min/max power per time slice.
-        """
-        for a, fo in enumerate(self.offers):
-            prof = fo.get_profile()
-            for j, ts in enumerate(prof):
-                # Compute offset from simulation start to FlexOffer start
-                # important for proper indexing when we create decision variables
-                offset = int((fo.get_est() - self.sim_start_ts) / self.res)
-                t = offset + j
-                # Create a decision power variable for time index t
-                self.power[(a, t)] = pulp.LpVariable(f"p_{a}_{t}", lowBound=0, upBound=ts.max_power)
+    def run_joint(self):
+        modules = self.build_modules()
+        for m in modules: m.create_variables(self)
+        for m in modules: m.add_constraints(self)
+        for m in modules: m.build_objective(self)
+        return self.solve()
 
-    def add_constraints(self):
-        """
-        Adds energy constraints per FlexOffer:
-        - Total allocated energy must lie within [min_alloc, max_alloc].
-        """
-        for a, fo in enumerate(self.offers):
-            prof = fo.get_profile()
-            terms = []
-            for j, ts in enumerate(prof):
-                t = int((fo.get_est() - self.sim_start_ts) / self.res) + j
-                # Each time slice contributes power × time to the total energy
-                terms.append(self.power[(a,t)] * self.dt)
+    def run_sequential_reserve_first(self):
+        
+        # Phase 1: Create spot variables (for reserve feasibility)
+        SpotMarket(self.spot_prices).create_variables(self)
 
-            # Add lower and upper bound constraints
-            self.prob += pulp.lpSum(terms) >= fo.get_min_overall_alloc()
-            self.prob += pulp.lpSum(terms) <= fo.get_max_overall_alloc()
+        # Phase 1: Solve reserve allocation
+        ReserveMarket(self.reserve_prices).create_variables(self)
+        ReserveMarket(self.reserve_prices).add_constraints(self)
+        ReserveMarket(self.reserve_prices).build_objective(self)
+        self.solve()
 
-    def build_objective(self):
-        """
-        Builds the profit-maximization objective based on spot prices.
-        Lower spot prices yield higher cost (hence negative term).
-        """
-        obj = []
-        for (a, t), var in self.power.items():
-            spot = self.spot_prices.iloc[t]
-            obj.append(-spot * var * self.dt)
-        self.prob += pulp.lpSum(obj)
+        fixed_p = self.p.copy()
+        fixed_pr_up = self.pr_up.copy()
+        fixed_pr_dn = self.pr_dn.copy()
+
+        # Phase 2: Reset and re-initialize for spot + activation
+        self.__init__(self.offers, self.spot_prices, self.reserve_prices, self.activation_prices, self.indicators)
+
+        # Recreate fixed p and reserve vars
+        for (a, t), val in fixed_p.items():
+            var = pulp.LpVariable(f"p_{a}_{t}", lowBound=pulp.value(val), upBound=pulp.value(val))
+            self.p[(a, t)] = var
+        for (a, t), val in fixed_pr_up.items():
+            var = pulp.LpVariable(f"pr_up_{a}_{t}", lowBound=pulp.value(val), upBound=pulp.value(val))
+            self.pr_up[(a, t)] = var
+        for (a, t), val in fixed_pr_dn.items():
+            var = pulp.LpVariable(f"pr_dn_{a}_{t}", lowBound=pulp.value(val), upBound=pulp.value(val))
+            self.pr_dn[(a, t)] = var
+
+        # Phase 2: Solve spot + activation
+        modules = []
+        if config.RUN_SPOT:
+            modules.append(SpotMarket(self.spot_prices))
+        if config.RUN_ACTIVATION:
+            modules.append(ActivationMarket(self.activation_prices, self.indicators))
+
+        for m in modules:
+            m.create_variables(self)
+            m.add_constraints(self)
+            m.build_objective(self)
+
+        return self.solve()
+
+
+    def run_theoretical_optimum(self):
+        original_mode = config.MODE
+        config.MODE = "joint"
+        original_spot = config.RUN_SPOT
+        original_res = config.RUN_RESERVE
+        original_act = config.RUN_ACTIVATION
+
+        config.RUN_SPOT = True
+        config.RUN_RESERVE = True
+        config.RUN_ACTIVATION = True
+
+        result = self.run_joint()
+
+        config.MODE = original_mode
+        config.RUN_SPOT = original_spot
+        config.RUN_RESERVE = original_res
+        config.RUN_ACTIVATION = original_act
+
+        return result
 
     def solve(self):
-        """
-        Solves the MILP problem using CBC solver (default via PuLP).
-        """
+        self.prob += pulp.lpSum(self.objective_terms)
         self.prob.solve(pulp.PULP_CBC_CMD(msg=False))
+        return self.extract_solution()
 
     def extract_solution(self):
-        """
-        Extracts the optimal schedule and updates each FlexOffer with:
-        - scheduled allocation per timeslice
-        """
-        for a, fo in enumerate(self.offers):
-            if fo.get_scheduled_allocation() is not None:
-                allocation = [0.0] * fo.get_duration()
-                prof = fo.get_profile()
-                for j, ts in enumerate(prof):
-                    t = int((fo.get_est() - self.sim_start_ts) / self.res) + j
-                    if (a, t) in self.power:
-                        allocation[j] = pulp.value(self.power[(a, t)])
-                fo.set_scheduled_allocation(allocation)
+        A = len(self.offers)
+        sol = {k: {a: {} for a in range(A)} for k in ["p", "pr_up", "pr_dn", "pb_up", "pb_dn", "s_up", "s_dn"]}
+        for (a, t), var in self.p.items(): sol["p"][a][t] = pulp.value(var)
+        for (a, t), var in self.pr_up.items(): sol["pr_up"][a][t] = pulp.value(var)
+        for (a, t), var in self.pr_dn.items(): sol["pr_dn"][a][t] = pulp.value(var)
+        for (a, t), var in self.pb_up.items(): sol["pb_up"][a][t] = pulp.value(var)
+        for (a, t), var in self.pb_dn.items(): sol["pb_dn"][a][t] = pulp.value(var)
+        for (a, t), var in self.s_up.items(): sol["s_up"][a][t] = pulp.value(var)
+        for (a, t), var in self.s_dn.items(): sol["s_dn"][a][t] = pulp.value(var)
+        return sol
 
     def run(self):
-        """
-        Runs the full optimization pipeline: define variables, add constraints,
-        build the objective, solve the LP, and write solution into offers.
-        """
-        self.create_variables()
-        self.add_constraints()
-        self.build_objective()
-        self.solve()
-        self.extract_solution()
+        if config.MODE == "joint":
+            return self.run_joint()
+        elif config.MODE == "sequential_reserve_first":
+            return self.run_sequential_reserve_first()
+        else:
+            raise NotImplementedError(f"Unsupported mode: {config.MODE}")

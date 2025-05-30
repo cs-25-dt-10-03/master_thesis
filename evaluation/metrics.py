@@ -20,62 +20,81 @@ from classes.electricVehicle import ElectricVehicle
 
 def compute_mean_runtimes(runtimes_sch, runtimes_agg):
     return {
-        "runtime_scheduling": round(np.mean([runtimes_sch]) if runtimes_sch else 0.0, 3),
-        "runtime_aggregation": round(np.mean([runtimes_agg]) if runtimes_agg else 0.0, 3)
+        "runtime_scheduling": round(np.mean([runtimes_sch]), 3),
+        "runtime_aggregation": round(np.mean([runtimes_agg]), 3)
     }
 
 def compute_financial_metrics(daily_results):
+    import numpy as np
 
-    mean_sch_spot = np.mean([r["rev_sched"]["spot_rev"] for r in daily_results])
-    mean_sch_res  = np.mean([r["rev_sched"]["res_rev"]  for r in daily_results])
-    mean_sch_act  = np.mean([r["rev_sched"]["act_rev"]  for r in daily_results])
+    # --- 1) Pull out mean revenues from your daily results ---
+    rev_sch_spot   = np.mean([r["rev_sched"]["spot_rev"] for r in daily_results])
+    rev_sch_res    = np.mean([r["rev_sched"]["res_rev"]  for r in daily_results])
+    rev_sch_act    = np.mean([r["rev_sched"]["act_rev"]  for r in daily_results])
 
-    mean_base_spot = np.mean([r["rev_base"]["spot_rev"] for r in daily_results])
-    optimal_total  = np.mean([r["rev_opt"]["total_rev"]  for r in daily_results])
+    rev_opt_spot   = np.mean([r["rev_opt"]["spot_rev"]   for r in daily_results])
+    rev_opt_res    = np.mean([r["rev_opt"]["res_rev"]    for r in daily_results])
+    rev_opt_act    = np.mean([r["rev_opt"]["act_rev"]    for r in daily_results])
 
-    saved_spot = mean_base_spot - mean_sch_spot
-    gain_res   = mean_sch_res
-    gain_act   = mean_sch_act
+    rev_base_spot  = np.mean([r["rev_base"]["spot_rev"]  for r in daily_results])
 
-    total_savings = saved_spot + gain_res + gain_act
+    # --- 2) Interpret as positive costs / revenues ---
+    baseline_cost        = rev_base_spot
 
-    pct_saved_spot= 100 * saved_spot / total_savings
-    pct_gain_res  = 100 * gain_res / total_savings
-    pct_gain_act  = 100 * gain_act / total_savings
+    scheduler_spot_cost  = rev_sch_spot
+    scheduler_res_rev    =   rev_sch_res
+    scheduler_act_rev    =   rev_sch_act
 
-    total_rev = mean_sch_res + mean_sch_act - mean_sch_spot
+    optimal_spot_cost    = rev_opt_spot
+    optimal_res_rev      =   rev_opt_res
+    optimal_act_rev      =   rev_opt_act
 
-    if optimal_total < 0 and abs(total_rev) > 1e-6:
-        pct_of_optimal = 100.0 * optimal_total / total_rev
-    elif abs(total_rev) <= 1e-6:
-        print("[WARNING] Scheduler returned 0 total revenue — cannot compute pct_of_optimal.")
-        pct_of_optimal = None
+    # --- 3) Net profits (revenues minus costs) ---
+    total_rev = (scheduler_res_rev + scheduler_act_rev) - scheduler_spot_cost
+    optimal_total = (optimal_res_rev + optimal_act_rev)   - optimal_spot_cost
+
+    # --- 4) % of theoretical optimum achieved ---
+    pct_of_optimal = 100.0 * (1 - abs(optimal_total - total_rev) / abs(optimal_total))
+
+    # --- 5) Compute net scheduler cost & baseline savings ---
+    scheduler_cost  = scheduler_spot_cost - (scheduler_res_rev + scheduler_act_rev)
+    total_savings   = baseline_cost - scheduler_cost
+
+    # savings vs baseline
+
+    print(f"[DEBUGGING] scheduler_cost: {scheduler_cost}, baseline_cost: {baseline_cost} , total_savings: {total_savings} ")
+
+    pct_total_saved = 100.0 * total_savings / baseline_cost
+    print(f"[DEBUGGING] {pct_total_saved} = 100.0 * {total_savings} / {baseline_cost} ")
+
+
+    # --- 6) Breakdown of contributions (sum ≈ 100%) ---
+    if abs(total_savings) < 1e-9:
+        pct_saved_spot = pct_gain_res = pct_gain_act = None
     else:
-        print("[WARNING] Optimal revenue is positive — check theoretical_optimal_schedule validity.")
-        pct_of_optimal = None
+        saved_spot     = baseline_cost - scheduler_spot_cost
+        gain_res       = scheduler_res_rev
+        gain_act       = scheduler_act_rev
 
-    pct_total_saved = 100.0 * (saved_spot + gain_res + gain_act) / mean_base_spot \
-                      if mean_base_spot else None
+        print(f"saved spot: {saved_spot} , gain_res: {gain_res} , gain_act: {gain_act}")
+
+        pct_saved_spot = 100.0 * saved_spot / total_savings
+        pct_gain_res   = 100.0 * gain_res   / total_savings
+        pct_gain_act   = 100.0 * gain_act   / total_savings
+
+        # sanity check
+        total_pct = pct_saved_spot + pct_gain_res + pct_gain_act
+        if abs(total_pct - 100.0) > 1e-6:
+            print(f"[WARNING] contributions sum to {total_pct:.4f}%")
 
     return {
-        "mean_sch_spot":   round(mean_sch_spot,  3),
-        "mean_sch_res":    round(mean_sch_res,   3),
-        "mean_sch_act":    round(mean_sch_act,   3),
-        "mean_base_spot":  round(mean_base_spot, 3),
+        "pct_of_optimal": round(pct_of_optimal, 2),
+        "pct_total_saved": round(pct_total_saved, 2),
+        "pct_saved_spot": round(pct_saved_spot, 2),
+        "pct_gain_res": round(pct_gain_res, 2),
+        "pct_gain_act": round(pct_gain_act, 2),
 
-        "saved_spot":      round(saved_spot,     3),
-        "gain_res":        round(gain_res,       3),
-        "gain_act":        round(gain_act,       3),
-
-        "pct_saved_spot":  round(pct_saved_spot, 2) if pct_saved_spot is not None else None,
-        "pct_gain_res":    round(pct_gain_res,   2) if pct_gain_res is not None else None,
-        "pct_gain_act":    round(pct_gain_act,   2) if pct_gain_act is not None else None,
-
-        "total_rev":       round(total_rev,      3),
-        "pct_total_saved": round(pct_total_saved,2) if pct_total_saved is not None else None,
-        "pct_of_optimal":  round(pct_of_optimal, 3) if pct_of_optimal is not None else None,
     }
-
 
 def greedy_baseline_schedule(offers, horizon):
     """
@@ -85,36 +104,43 @@ def greedy_baseline_schedule(offers, horizon):
     if not offers:
         return sol
 
-    slot_sec = config.TIME_RESOLUTION  # seconds per slot
-    dt       = slot_sec / 3600.0       # hours per slot
-    sim_start_ts = datetime.timestamp(pd.to_datetime(config.SIMULATION_START_DATE))
+    slot_sec = config.TIME_RESOLUTION     # seconds per slot
+    dt       = slot_sec / 3600.0          # hours per slot
+    # rebase epoch so slot 0 is at the earliest of configured start or the first FO
+    config_start_ts = int(pd.to_datetime(config.SIMULATION_START_DATE).timestamp())
+    min_offer_ts    = min(fo.get_est() for fo in offers)
+    sim_start_ts    = min(config_start_ts, min_offer_ts)
     T = horizon
 
     for a, fo in enumerate(offers):
-        max_total = fo.get_min_overall_alloc()
-        prof      = fo.get_profile()
-        dur       = fo.get_duration()
-        start_ts  = fo.get_est()
-        max_energy_per_slot = prof[0].max_power
+        # total energy requirement (kWh)
+        required_energy = fo.get_min_overall_alloc()
+        prof            = fo.get_profile()
+        dur             = fo.get_duration()
+        start_ts        = fo.get_est()
+        slot_energy_limit = prof[0].max_power * dt
 
-        base_idx  = int((start_ts - sim_start_ts) / slot_sec)
+        # map earliest_start to a 0-based slot index
+        base_idx = int((start_ts - sim_start_ts) / slot_sec)
 
-        remaining = max_total
+        remaining = required_energy
         p_dict    = {}
 
         # --- clamp every scheduled slot to [0, T)
+        # greedily fill slot by slot, respecting each slice’s max_power
         for i in range(dur):
             if remaining <= 0:
                 break
             idx = base_idx + i
-            # never schedule outside the simulation horizon
             if idx < 0 or idx >= T:
+                print("vi breaker tids horizon i greedy")
                 break
-            energy_slot = min(max_energy_per_slot, remaining)
-            p_val = energy_slot / dt
-            p_dict[idx] = p_val
-            remaining  -= energy_slot
 
+            # allocate kWh up to slot limit or what's left
+            energy_to_charge = min(slot_energy_limit, remaining)  # kWh
+            p_val = energy_to_charge / dt # kW
+            p_dict[idx] = p_val
+            remaining   -= energy_to_charge
 
         sol["p"][a] = p_dict
         for key in ("pr_up","pr_dn","pb_up","pb_dn","s_up","s_dn"):
@@ -128,7 +154,9 @@ def theoretical_optimal_schedule(offers, spot, reserve, activation, indicators):
 
     dt = config.TIME_RESOLUTION / 3600.0
     res = config.TIME_RESOLUTION
-    sim_start_ts = datetime.timestamp(pd.to_datetime(config.SIMULATION_START_DATE))
+    config_start_ts = int(pd.to_datetime(config.SIMULATION_START_DATE).timestamp())
+    min_offer_ts = min(fo.get_est() for fo in offers)
+    sim_start_ts = min(config_start_ts, min_offer_ts)
     T = len(spot)
     A = len(offers)
     offsets = [int((fo.get_est() - sim_start_ts) / res) for fo in offers]
@@ -137,6 +165,16 @@ def theoretical_optimal_schedule(offers, spot, reserve, activation, indicators):
     p, pr_up, pr_dn = {}, {}, {}
     pb_up, pb_dn = {}, {}
     s_up, s_dn = {}, {}
+
+    for a, fo in enumerate(offers):
+        dur     = fo.get_duration()
+        est_ts  = fo.get_est()
+        lst_ts  = fo.get_lst()
+        est_idx = int((est_ts - sim_start_ts) / res)
+        lst_idx = int((lst_ts - sim_start_ts) / res)
+        if est_idx < 0 or lst_idx + dur > T:
+            raise ValueError(
+                f"FlexOffer {a} window [{est_idx}, {lst_idx + dur}) outside price horizon of length {T}")
 
     prob = LpProblem("TheoreticalEVRevenue", LpMaximize)
 
@@ -181,27 +219,26 @@ def theoretical_optimal_schedule(offers, spot, reserve, activation, indicators):
     # Objective
     obj = []
     for (a, s_idx, t), var in p.items():
-        if (a, t) in pr_up and (a, t) in pr_dn:
             spot_price = spot.iloc[t]
-            r_up, r_dn, _ , _ = reserve.iloc[t]
-            b_up, b_dn, penalty, _, _ = activation.iloc[t]
-            d_up, d_dn = indicators[t]
-            b_up = b_up if d_up == 1 else 0
-            b_dn = b_dn if d_dn == 1 else 0
-
             obj.append(-spot_price * var * dt)
-            obj.append(r_up * pr_up[(a, t)] * dt + r_dn * pr_dn[(a, t)] * dt)
+            if (a, t) in pr_up and (a, t) in pr_dn: 
+                r_up, r_dn, _ , _ = reserve.iloc[t]
+                b_up, b_dn, penalty, _, _ = activation.iloc[t]
+                d_up, d_dn = indicators[t]
+                b_up = b_up if d_up == 1 else 0
+                b_dn = b_dn if d_dn == 1 else 0
 
-            obj.append((b_up - spot) * pb_up[(a,t)] * dt)
-            obj.append((b_dn - spot) * pb_dn[(a,t)] * dt)
-            obj.append(-penalty * (s_up[(a,t)] + s_dn[(a,t)]) * dt)
+                obj.append(r_up * pr_up[(a, t)] * dt + r_dn * pr_dn[(a, t)] * dt)
+
+                obj.append((b_up - spot) * pb_up[(a,t)] * dt)
+                obj.append((b_dn - spot) * pb_dn[(a,t)] * dt)
+                obj.append(-penalty * (s_up[(a,t)] + s_dn[(a,t)]) * dt)
     prob += lpSum(obj)
 
     # Constraints
     # --- only one start time ---
     for a in range(len(offers)):
         prob += pulp.lpSum(z[(a, s_idx)] for s_idx in range(len(allowed_starts[a]))) == 1
-
 
 
     # --- min total energy ---

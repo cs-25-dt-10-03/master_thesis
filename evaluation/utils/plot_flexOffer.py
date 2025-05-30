@@ -2,73 +2,90 @@ import matplotlib.pyplot as plt
 import numpy as np
 from datetime import datetime
 
+
 def plot_flexoffer(fo, spot_prices=None, resolution_seconds=3600, time_fmt="%H:%M"):
-    """
-    Draw flexible-envelope bars per slice, with slot indices, timestamps, scheduled allocation,
-    event markers, and spot prices.
-    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+    from datetime import datetime
+
     t0 = fo.get_est()
-    to_slot = lambda ts: int((ts - t0) // resolution_seconds)
-    t_es = 0
-    t_ls = to_slot(fo.get_lst())
-    t_le = to_slot(fo.get_et())
     profile = fo.get_profile()
-
-    # Plot setup
-    fig, ax = plt.subplots(figsize=(10, 4))
-
-    # Envelope bars
-    for j, ts in enumerate(profile):
-        ax.bar(j, ts.min_power, width=1, bottom=0, align='edge',
-               color='lightgrey', edgecolor='black', zorder=1)
-        ax.bar(j, ts.max_power - ts.min_power, width=1, bottom=ts.min_power,
-               align='edge', color='darkgrey', edgecolor='black', zorder=1)
-
-    # Scheduled allocation
-    sched0 = to_slot(fo.get_scheduled_start_time())
+    duration = fo.get_duration()
+    sched0 = int((fo.get_scheduled_start_time() - t0) // resolution_seconds)
     sched = fo.get_scheduled_allocation()
+    e_min = round(fo.get_min_overall_alloc())
+    e_max = round(fo.get_max_overall_alloc())
+
+    est_slot = 0
+    lst_slot = int((fo.get_lst() - t0) // resolution_seconds)
+    et_slot  = int((fo.get_et() - t0) // resolution_seconds)
+    et_slot -= 1
+
+    full_slots = np.arange(0, et_slot +1)  # show all hours until end time
+    bar_width = 0.45
+    fig, ax = plt.subplots(figsize=(12, 4))
+
+    # Determine y-limit max
+    y_max = max((ts.max_power for ts in profile), default=1)
+
+    # Draw energy bars (if defined), otherwise blank
+    for j in full_slots:
+        if j < len(profile):
+            ts = profile[j]
+            ax.bar(j - bar_width/2, ts.min_power, width=bar_width, bottom=0,
+                   color='#4682b4', edgecolor='blue', align='edge', zorder=1)
+            ax.bar(j - bar_width/2, ts.max_power - ts.min_power, width=bar_width,
+                   bottom=ts.min_power, color='#add8e6', edgecolor='blue', align='edge', zorder=1)
+        # Always write e_i
+        ax.text(j, y_max * 1.05, f"$e_{{{j+1}}}$", ha='center', va='bottom', fontsize=9)
+
+    # Scheduled allocation (even if bar is missing)
     for j, p in enumerate(sched):
         x0 = sched0 + j
-        ax.hlines(p, x0, x0 + 1, linestyles=':', linewidth=2, color='black', zorder=3)
+        ax.hlines(p, x0 - bar_width/2, x0 + bar_width/2,
+                  linestyles='-', linewidth=1.5, color='black', zorder=3)
 
-    # Event markers
-    y_max = max(ts.max_power for ts in profile)
-    events = [(t_es, "Earliest Start", "green"), (t_ls, "Latest Start", "orange"), (t_le, "End Time", "red")]
-    for x, lbl, col in events:
-        ax.axvline(x, color=col, linewidth=1.5, zorder=4)
-        ax.text(x, y_max * 1.02, lbl, ha='center', va='bottom', color=col, fontsize=9, zorder=4)
-
-    # Grid and limits
-    ax.set_xlim(0, t_le + 0.5)
-    ax.set_ylim(0, y_max * 1.15)
-    ax.set_xticks(np.arange(t_le + 1))
-    ax.grid(axis='x', linestyle='--', linewidth=0.8, alpha=0.7, zorder=2)
-    ax.set_axisbelow(False)
-
-    slots = np.arange(t_le + 1)
-    times = [
-        datetime.fromtimestamp(t0 + i * resolution_seconds).strftime(time_fmt)
-        for i in slots
-    ]
-
-    price_labels = [""] * len(slots)
+    # Time labels
+    times = [datetime.fromtimestamp(t0 + i * resolution_seconds).strftime(time_fmt) for i in full_slots]
+    labels = times
     if spot_prices is not None:
-        for i in slots:
-            # Shift price lookup by +1 slot
-            ts = datetime.fromtimestamp(t0 + (i + 1) * resolution_seconds)
-            if ts in spot_prices.index:
-                price = spot_prices.loc[ts]
-                price_labels[i] = f"\n{int(price)} DKK"
-            else:
-                price_labels[i] = "\nN/A"
+        labels = []
+        for i in full_slots:
+            ts = datetime.fromtimestamp(t0 + i * resolution_seconds)
+            price = spot_prices.get(ts, "N/A") if hasattr(spot_prices, 'get') else spot_prices.loc.get(ts, "N/A")
+            label = f"{times[i]}\n{int(price)} DKK" if isinstance(price, (int, float)) else f"{times[i]}\nN/A"
+            labels.append(label)
 
-    labels = [f"{i}\n{times[i]}{price_labels[i]}" for i in slots]
-    ax.set_xticklabels(labels, fontsize=8)
-    # Axis labels
-    ax.set_xlabel("Slot index / Time / Spot price")
-    ax.set_ylabel("Energy (kW)")
+    ax.set_xticks(full_slots)
+    ax.set_xticklabels(labels, rotation=45, fontsize=8)
+
+    # Event lines + labels ABOVE bars
+    event_lines = [
+        (est_slot - bar_width/2, "Earliest Start", "green", y_max * 1.20),
+        (lst_slot - bar_width/2, "Latest Start",   "orange", y_max * 1.18),
+        ((et_slot - bar_width/2) + 0.5,         "End Time",       "red",    y_max * 1.20)
+    ]
+    for x, label, color, y in event_lines:
+        ax.axvline(x, color=color, linestyle='--', linewidth=1.2, zorder=2)
+        ax.text(x, y, label, ha='left', va='bottom', fontsize=8, color=color)
+
+    # Titles and limits
+    ax.set_xlim(-0.5, et_slot + 0.5)
+    ax.set_ylim(0, y_max * 1.3)
+    ax.set_xlabel("Time")
+    ax.set_ylabel("Energy (kWh)")
+    ax.set_title(
+        rf"${e_min}\,\mathrm{{kWh}} \leq e_1 + \dots + e_{len(profile) + (lst_slot - est_slot)} \leq {e_max}\,\mathrm{{kWh}}$",
+        fontsize=13, pad=15
+    )
+
+    # Styling
+    ax.grid(False)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
     plt.tight_layout()
     plt.show()
+
 
 
 def plot_flexoffer_aggregation(fo1, fo2, fo_agg, spot_prices=None, resolution_seconds=3600, time_fmt="%H:%M"):
@@ -157,7 +174,9 @@ def plot_flexoffer_aggregation(fo1, fo2, fo_agg, spot_prices=None, resolution_se
     labels = [f"{i}\n{times[i]}{price_labels[i]}" for i in slots]
     axes[-1].set_xticks(slots)
     axes[-1].set_xticklabels(labels, fontsize=8)
-    axes[-1].set_xlabel("Slot / Time / Spot price")
-
+    if spot_prices is not None:
+        axes[-1].set_xlabel("Slot / Time / Spot price")
+    else:
+        axes[-1].set_xlabel("Slot / Time")
     plt.tight_layout()
     plt.show()

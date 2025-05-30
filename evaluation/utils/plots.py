@@ -2,11 +2,11 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import os
 
-RESULTS_DIR = '../results/summary.csv'
+RESULTS_DIR = "../results/synth_summary.csv"
 
 df = pd.read_csv(RESULTS_DIR)
 
-df = df[df['RUN_SPOT']]
+df = df[df['RUN_SPOT'].fillna(False)]
 
 # Create a human‑readable market scenario label
 def market_label(row):
@@ -83,12 +83,16 @@ plt.show()
 
 
 
+import pandas as pd
 import matplotlib.pyplot as plt
 
-# — build a simple Market label (no cluster method in legend) —
+# Fallback styling if plot_style.py is not accessible
+MODE_STYLES = {"joint": "-", "sequential": "--", "sequential_reserve_first": ":"}
+MODE_MARKERS = {"joint": "o", "sequential": "s", "sequential_reserve_first": "v"}
+
+df = pd.read_csv(RESULTS_DIR)
+
 def market_label(row):
-    if not row['RUN_SPOT']:
-        return 'No Spot'
     if row['RUN_RESERVE'] and row['RUN_ACTIVATION']:
         return 'Spot + Reserve + Activation'
     elif row['RUN_RESERVE']:
@@ -99,16 +103,12 @@ def market_label(row):
 df['Market']   = df.apply(market_label, axis=1)
 df['Scenario'] = df['Market'] + ' | ' + df['MODE'].str.title()
 
-# (optional) restrict to one EV-count if you like
-# df = df[df['NUM_EVS'] == 500]
 
-res_labels   = {900: '15 min', 3600: '60 min'}
-metrics      = [
+res_labels  = {900: '15 min', 3600: '60 min'}
+metrics = [
     ('pct_total_saved', 'Total Savings (%)'),
     ('pct_of_optimal', '% of Theoretical Maximum')
 ]
-mode_styles  = {'joint':'-', 'sequential':'--', 'sequential_reserve_first':':'}
-mode_markers = {'joint':'o','sequential':'s','sequential_reserve_first':'v'}
 
 fig, axes = plt.subplots(2, 2, figsize=(14, 10), sharey='row')
 
@@ -117,40 +117,46 @@ for i, (metric, ylabel) in enumerate(metrics):
         ax = axes[i][j]
         sub = df[df['TIME_RES'] == res]
 
-        # 1) plot all non‐spot‐only scenarios by (Market, MODE)
-        others = sub[sub['Market'] != 'Spot only']
-        for (market, mode), grp in others.groupby(['Market','MODE']):
-            grp = grp.sort_values('NUM_CLUSTERS')
+        # Spot only grouped properly
+        spot = (
+            sub[(~sub['RUN_RESERVE']) & (sub['MODE'] == "joint")]
+            .groupby('NUM_CLUSTERS')[metric]
+            .mean()
+            .reset_index()
+        )
+        if not spot.empty:
+            ax.plot(
+                spot['NUM_CLUSTERS'],
+                spot[metric],
+                label='Spot only',
+                linestyle='-',
+                marker='o',
+                color='red'
+            )
+
+        others = (
+            sub[(sub['RUN_RESERVE']) & (sub['RUN_ACTIVATION'])]
+            .groupby(['NUM_CLUSTERS', 'MODE'])[metric]
+            .mean()
+            .reset_index()
+        )
+        for mode in others['MODE'].unique():
+            grp = others[others['MODE'] == mode].sort_values('NUM_CLUSTERS')
             ax.plot(
                 grp['NUM_CLUSTERS'],
                 grp[metric],
-                label=f"{market} | {mode.title()}",
-                linestyle=mode_styles[mode],
-                marker=mode_markers[mode]
+                label=f"Spot + Reserve + Activation | {mode.title()}",
+                linestyle=MODE_STYLES[mode],
+                marker=MODE_MARKERS[mode]
             )
-
-        # 2) collapse to a single "Spot only" line (average if you truly have duplicates)
-        spot = (sub[sub['Market']=='Spot only']
-                  .groupby('NUM_CLUSTERS')[metric]
-                  .mean()
-                  .reset_index())
-        ax.plot(
-            spot['NUM_CLUSTERS'],
-            spot[metric],
-            label='Spot only',
-            linestyle='-',
-            marker='o'
-        )
 
         ax.set_title(res_labels[res])
         ax.set_xlabel('Number of Clusters')
         if j == 0:
             ax.set_ylabel(ylabel)
-        ax.grid(axis='y', linestyle='--', alpha=0.6)
+        ax.grid(True)
 
-# single legend in top‐right
-axes[0,1].legend(bbox_to_anchor=(1.05,1), loc='upper left', fontsize='small')
-
-plt.tight_layout(rect=[0,0,1,0.96])
+axes[0][1].legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='small')
+plt.tight_layout(rect=[0, 0, 1, 0.96])
 plt.show()
 

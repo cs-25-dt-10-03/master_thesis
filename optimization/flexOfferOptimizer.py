@@ -51,10 +51,24 @@ def optimize_flexoffers(offers, spot_prices, reserve_prices=None, activation_pri
     res = config.TIME_RESOLUTION 
     A = len(offers)
     # 1) Offsets & horizon
-    sim_start_ts = datetime.timestamp(pd.to_datetime(config.SIMULATION_START_DATE))
+    
+    config_start_ts = int(pd.to_datetime(config.SIMULATION_START_DATE).timestamp())
+    min_offer_ts   = min(fo.get_est() for fo in offers)
+    sim_start_ts   = min(config_start_ts, min_offer_ts)
+
     T = len(spot_prices)           # only slots we actually have prices for
-    print(f"A i scheduleren [{A}]")
     offsets = [int((fo.get_est() - sim_start_ts) / res) for fo in offers]
+
+    # ensure every offer’s allowed window + duration fits in [0, T)
+    for a, fo in enumerate(offers):
+        dur     = fo.get_duration()
+        est_ts  = fo.get_est()
+        lst_ts  = fo.get_lst()
+        est_idx = int((est_ts - sim_start_ts) / res)
+        lst_idx = int((lst_ts - sim_start_ts) / res)
+        if est_idx < 0 or lst_idx + dur > T:
+            raise ValueError(
+                f"FlexOffer {a} window [{est_idx}, {lst_idx + dur}) outside price horizon of length {T}")
 
 
     prob = pulp.LpProblem("FlexOfferScheduling", pulp.LpMaximize)
@@ -63,7 +77,7 @@ def optimize_flexoffers(offers, spot_prices, reserve_prices=None, activation_pri
     z = {}  # z[a,s]: binary start time selector
     allowed_starts = {}  # Map of allowed start times for each offer
     for a, fo in enumerate(offers):
-        allowed = fo.get_allowed_start_times()
+        allowed = [s for s in fo.get_allowed_start_times() if s + fo.get_duration() * res <= fo.get_et()]
         allowed_starts[a] = allowed
         for s_idx, s in enumerate(allowed):
             z[(a, s_idx)] = pulp.LpVariable(f"z_{a}_{s_idx}", cat='Binary')
@@ -86,7 +100,7 @@ def optimize_flexoffers(offers, spot_prices, reserve_prices=None, activation_pri
                     prob += var >= ts.min_power * z[(a, s_idx)], f"min_bound_{a}_{s_idx}_{j}"
 
     if fixed_p is not None:
-        for (a,t), var in p.items():
+        for (a, s_idx, t), var in p.items():
             val = fixed_p[a].get(t, 0.0)
             var.lowBound = val
             var.upBound  = val
@@ -133,9 +147,9 @@ def optimize_flexoffers(offers, spot_prices, reserve_prices=None, activation_pri
     obj = []
 
     for (a, s_idx, t), var in p.items():
-        spot = spot_prices.iloc[t]
+        spot = spot_prices[t]
+        #print(spot)
         obj.append(-spot * var * dt)
-        print(spot)
         if config.RUN_RESERVE and reserve_prices is not None:
             if (a, t) in pr_up and (a, t) in pr_dn: 
                 r_up, r_dn, _, _ = reserve_prices.iloc[t]
@@ -182,16 +196,6 @@ def optimize_flexoffers(offers, spot_prices, reserve_prices=None, activation_pri
                     prob += pr_dn[(a,t)] <= ts.max_power - p_total
                     prob += pr_up[(a,t)] <= ts.max_power
 
-
-                    # total_pr_up_t = lpSum(pr_up[(a,t)] for a in range(A) if (a,t) in pr_up)
-                    # total_pr_dn_t = lpSum(pr_dn[(a,t)] for a in range(A) if (a,t) in pr_dn)
-
-                    # market_up = reserve_prices["mFRR_UpPurchased"].iloc[t] * 1000  # MWh → kWh
-                    # market_dn = reserve_prices["mFRR_DownPurchased"].iloc[t] * 1000
-                    
-                    # prob += total_pr_up_t <= market_up
-                    # prob += total_pr_dn_t <= market_dn
-                    
             if config.RUN_ACTIVATION and indicators is not None:
                 if t < T:
 
@@ -265,13 +269,14 @@ def optimize_flexoffers(offers, spot_prices, reserve_prices=None, activation_pri
     for a, fo in enumerate(offers):
         # Find chosen start time
         chosen_s_idx = None
-        for s_idx in range(len(fo.get_allowed_start_times())):
+        allowed = allowed_starts[a]
+        for s_idx in range(len(allowed)):
             if pulp.value(z[(a, s_idx)]) > 0.5:
                 chosen_s_idx = s_idx
                 break
 
         if chosen_s_idx is not None:
-            start_time = fo.get_allowed_start_times()[chosen_s_idx]
+            start_time = allowed[chosen_s_idx]
             fo.set_scheduled_start_time(start_time)
 
             allocation = [0.0] * fo.get_duration()
