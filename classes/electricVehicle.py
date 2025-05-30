@@ -42,10 +42,10 @@ class ElectricVehicle:
         Now constrains window to 06:00–18:00 on the same calendar day.
         """
         # 80% chance weekday, 50% chance weekend
-        # is_weekend   = day_start.weekday() >= 5
-        # active_prob  = 0.8 if not is_weekend else 0.5
-        # if np.random.rand() > active_prob:
-        #     return None  # EV is inactive today
+        is_weekend   = day_start.weekday() >= 5
+        active_prob  = 0.7 if not is_weekend else 0.5
+        if np.random.rand() > active_prob:
+            return None  # EV is inactive today
 
         # --- ARRIVAL between 10:00 and 12:00 ---
         arrival_hour = np.random.uniform(9, 12)

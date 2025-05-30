@@ -4,7 +4,7 @@
 from time import perf_counter
 from evaluation.fleet_simulator import simulate_fleet
 import json
-from optimization.FlexOfferOptimizer import BaseOptimizer
+from optimization.flexOfferOptimizer import BaseOptimizer
 from typing import List, Dict, Any
 from classes.electricVehicle import ElectricVehicle
 import os
@@ -201,8 +201,8 @@ def get_scenarios():
     cluster_methods = ['ward']
     dynamic = [False]
     parallel = [False]
-    clusters = [2]
-    num_evs = [10]
+    clusters = [5]
+    num_evs = [100, 1000, 10000]
 
     scenarios = []
     for type, mode, spot, reserve, activation, res, evs, cluster, align, cluster_method, dyn, par in product(
