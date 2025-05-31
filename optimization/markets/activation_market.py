@@ -30,13 +30,25 @@ class ActivationMarket:
             model.prob += model.pb_up[(a, t)] + model.s_up[(a, t)] >= model.pr_up[(a, t)] * d_up, f"act_up_slack_{a}_{t}"
             model.prob += model.pb_dn[(a, t)] + model.s_dn[(a, t)] >= model.pr_dn[(a, t)] * d_dn, f"act_dn_slack_{a}_{t}"
 
-            # if isinstance(model.offers[0], Flexoffer):
-            #     if (a, t - 1) in model.pr_up:
-            #         ts = model.offers[a].get_profile()[t - model.offsets[a]]
-            #         dt_minutes = config.TIME_RESOLUTION / 60
-            #         ramp_limit = ts.max_power * (10 / dt_minutes) if ts else 1000  # fallback
-            #         model.prob += model.pr_up[(a, t)] - model.pr_up[(a, t - 1)] <= ramp_limit
-            #         model.prob += model.pr_dn[(a, t)] - model.pr_dn[(a, t - 1)] <= ramp_limit
+            # — enforce actual power stays within [min,max] of the time slice —
+            #    p_act = p – pb_up + pb_dn
+            offer = model.offers[a]
+            p_act = ( model.p[(a, t)]
+                    - model.pb_up[(a, t)]
+                    + model.pb_dn[(a, t)] )
+
+            if isinstance(offer, Flexoffer):
+                ts = offer.get_profile()[t - model.offsets[a]]
+                model.prob += p_act >= ts.min_power, f"act_min_power_{a}_{t}"
+                model.prob += p_act <= ts.max_power, f"act_max_power_{a}_{t}"
+            else:
+                # DFO: bound p_act within global polygon y-limits
+                poly   = offer.polygons[t - model.offsets[a]]
+                y_vals = [pt.y for pt in poly.points]
+                y_min, y_max = min(y_vals), max(y_vals)
+                model.prob += p_act >= y_min, f"dfo_act_min_{a}_{t}"
+                model.prob += p_act <= y_max, f"dfo_act_max_{a}_{t}"
+            # for DFOs you’d analogously bound p_act by the polygon’s y-values
 
     def build_objective(self, model):
         dt = model.dt

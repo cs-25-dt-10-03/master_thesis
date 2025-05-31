@@ -31,37 +31,22 @@ class SpotMarket:
                 model.prob += total_energy <= offer.get_max_overall_alloc(), f"total_max_energy_{a}"
 
             else:
-                cumulative = pulp.LpAffineExpression()
                 poly_list = offer.polygons
+                energies = []
                 for j, poly in enumerate(poly_list):
                     t = model.offsets[a] + j
                     if (a, t) not in model.p:
                         continue
+                    y_vals = [pt.y for pt in poly.points]
+                    y_min, y_max = min(y_vals), max(y_vals)
+                    model.prob += model.p[(a, t)] >= y_min, f"dfo_min_{a}_{t}"
+                    model.prob += model.p[(a, t)] <= y_max, f"dfo_max_{a}_{t}"
 
-                    model.prob += model.p[(a, t)] >= 0, f"dfo_min_{a}_{t}"
-                    model.prob += model.p[(a, t)] <= poly.charging_power, f"dfo_max_{a}_{t}"
+                    energies.append(model.p[(a, t)] * model.dt)
 
-                    # points = poly.points
-                    # if len(points) < 4:
-                    #     ymin, ymax = points[0].y, points[1].y
-                    #     model.prob += model.p[(a, t)] >= ymin, f"dfo_min_{a}_{t}"
-                    #     model.prob += model.p[(a, t)] <= ymax, f"dfo_max_{a}_{t}"
-                    # else:
-                    #     for k in range(1, len(points) - 2, 2):
-                    #         x0, y0 = points[k - 1].x, points[k - 1].y
-                    #         x1, y1 = points[k + 1].x, points[k + 1].y
-                    #         if x1 != x0:
-                    #             slope = (y1 - y0) / (x1 - x0)
-                    #             energy_min = y0 + slope * (cumulative - x0)
-                    #             model.prob += model.p[(a, t)] >= energy_min, f"dfo_min_slope_{a}_{t}"
-                    #             break
-
-                    # cumulative += model.p[(a, t)] * model.dt
-
-                total_energy = pulp.lpSum(model.p[(a, t)] * model.dt for j, poly in enumerate(poly_list)
-                                          if (a, model.offsets[a]+j) in model.p)
-                model.prob += total_energy >= offer.min_total_energy, f"dfo_total_min_{a}"
-                model.prob += total_energy <= offer.max_total_energy, f"dfo_total_max_{a}"
+                # now *correctly* enforce overall energy
+                model.prob += pulp.lpSum(energies) >= offer.min_total_energy, f"dfo_total_min_{a}"
+                model.prob += pulp.lpSum(energies) <= offer.max_total_energy, f"dfo_total_max_{a}"
 
     def build_objective(self, model):
         dt = model.dt

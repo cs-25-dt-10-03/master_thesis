@@ -50,12 +50,26 @@ def compute_financial_metrics(daily_results):
     optimal_act_rev      =   rev_opt_act
 
     # --- 3) Net profits (revenues minus costs) ---
-    total_rev = (scheduler_res_rev + scheduler_act_rev) - scheduler_spot_cost
-    optimal_total = (optimal_res_rev + optimal_act_rev)   - optimal_spot_cost
+    total_rev   = np.mean([r["rev_sched"]["total_rev"] for r in daily_results])
+    optimal_total = np.mean([r["rev_opt"]["total_rev"]   for r in daily_results])
+    
+    # --- 4) % of theoretical maximum improvement captured (improvement ratio) ---
+    # Compute net costs so that lower cost = better:
+    #  scheduler_cost = spot_cost - (reserve_rev + activation_rev)
+    #  optimal_cost   = optimal_spot_cost - (optimal_res_rev + optimal_act_rev)
+    scheduler_cost = scheduler_spot_cost - (scheduler_res_rev + scheduler_act_rev)
+    optimal_cost   = optimal_spot_cost   - (optimal_res_rev   + optimal_act_rev)
 
-    # --- 4) % of theoretical optimum achieved ---
-    pct_of_optimal = 100.0 * (1 - abs(optimal_total - total_rev) / abs(optimal_total))
-
+    # The maximum possible savings = baseline_cost - optimal_cost
+    max_savings = baseline_cost - optimal_cost
+    # The savings we actually achieved
+    savings     = baseline_cost - scheduler_cost
+    if max_savings <= 1e-9:
+        pct_of_optimal = None
+    else:
+        pct_of_optimal = 100.0 * savings / max_savings
+        # clamp into [0,100]
+        pct_of_optimal = max(0.0, min(100.0, pct_of_optimal))
     # --- 5) Compute net scheduler cost & baseline savings ---
     scheduler_cost  = scheduler_spot_cost - (scheduler_res_rev + scheduler_act_rev)
     total_savings   = baseline_cost - scheduler_cost

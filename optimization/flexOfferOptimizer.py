@@ -47,58 +47,77 @@ class BaseOptimizer:
         for m in modules: m.add_constraints(self)
         for m in modules: m.build_objective(self)
         return self.solve()
-
+    
     def run_sequential_reserve_first(self):
-        
-        # Phase 1: Create spot variables (for reserve feasibility)
-        SpotMarket(self.spot_prices).create_variables(self)
+        # ---------- PHASE 1: Spot feasibility + Reserve only ----------
+        # 1. Create and constrain baseline p variables
+        spot_mod = SpotMarket(self.spot_prices)
+        spot_mod.create_variables(self)
+        spot_mod.add_constraints(self)    # enforce per-slice AND total-energy constraints
 
-        # Phase 1: Solve reserve allocation
-        ReserveMarket(self.reserve_prices).create_variables(self)
-        ReserveMarket(self.reserve_prices).add_constraints(self)
-        ReserveMarket(self.reserve_prices).build_objective(self)
+        # 2. Create & constrain reserve variables on that baseline
+        res_mod = ReserveMarket(self.reserve_prices)
+        res_mod.create_variables(self)
+        res_mod.add_constraints(self)
+        res_mod.build_objective(self)     # maximize reserve revenue
         self.solve()
 
-        fixed_p = self.p.copy()
-        fixed_pr_up = self.pr_up.copy()
-        fixed_pr_dn = self.pr_dn.copy()
+        # 3. Capture the fixed values of p, pr_up, pr_dn
+        fixed_p     = {k: v.value() for k, v in self.p.items()}
+        fixed_pr_up = {k: v.value() for k, v in self.pr_up.items()}
+        fixed_pr_dn = {k: v.value() for k, v in self.pr_dn.items()}
 
-        # Phase 2: Reset and re-initialize for spot + activation
-        self.__init__(self.offers, self.spot_prices, self.reserve_prices, self.activation_prices, self.indicators)
+        # ---------- PHASE 2: Re‐init model, re‐fix vars, then add all objectives ----------
+        # Re‐initialize the optimizer to clear the old LP
+        self.__init__(self.offers,
+                      self.spot_prices,
+                      self.reserve_prices,
+                      self.activation_prices,
+                      self.indicators)
 
-        # Recreate fixed p and reserve vars
+        # 4. Re-create variables and immediately fix them to Phase 1 values
+        #    Baseline p
+        spot_mod = SpotMarket(self.spot_prices)
+        spot_mod.create_variables(self)
         for (a, t), val in fixed_p.items():
-            var = pulp.LpVariable(f"p_{a}_{t}", lowBound=pulp.value(val), upBound=pulp.value(val))
-            self.p[(a, t)] = var
+            var = self.p[(a, t)]
+            var.lowBound = val
+            var.upBound  = val
+
+        #    Reserve bids pr_up/pr_dn
+        res_mod = ReserveMarket(self.reserve_prices)
+        res_mod.create_variables(self)
         for (a, t), val in fixed_pr_up.items():
-            var = pulp.LpVariable(f"pr_up_{a}_{t}", lowBound=pulp.value(val), upBound=pulp.value(val))
-            self.pr_up[(a, t)] = var
+            var = self.pr_up[(a, t)]
+            var.lowBound = val
+            var.upBound  = val
         for (a, t), val in fixed_pr_dn.items():
-            var = pulp.LpVariable(f"pr_dn_{a}_{t}", lowBound=pulp.value(val), upBound=pulp.value(val))
-            self.pr_dn[(a, t)] = var
+            var = self.pr_dn[(a, t)]
+            var.lowBound = val
+            var.upBound  = val
 
-        # Phase 2: Solve spot + activation
-        modules = []
-        if config.RUN_SPOT:
-            modules.append(SpotMarket(self.spot_prices))
+        # 5. Re-add spot & reserve objective terms on those fixed vars
+        spot_mod.build_objective(self)
+        res_mod.build_objective(self)
+
+        # 6. Create & constrain activation variables, then add its objective
         if config.RUN_ACTIVATION:
-            modules.append(ActivationMarket(self.activation_prices, self.indicators))
+            act_mod = ActivationMarket(self.activation_prices, self.indicators)
+            act_mod.create_variables(self)
+            act_mod.add_constraints(self)
+            act_mod.build_objective(self)
 
-        for m in modules:
-            m.create_variables(self)
-            m.add_constraints(self)
-            m.build_objective(self)
-
+        # 7. Solve the fully‐assembled LP
         return self.solve()
 
 
     def run_theoretical_optimum(self):
         original_mode = config.MODE
-        config.MODE = "joint"
         original_spot = config.RUN_SPOT
         original_res = config.RUN_RESERVE
         original_act = config.RUN_ACTIVATION
 
+        config.MODE = "joint"
         config.RUN_SPOT = True
         config.RUN_RESERVE = True
         config.RUN_ACTIVATION = True

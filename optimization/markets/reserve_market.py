@@ -21,12 +21,12 @@ class ReserveMarket:
                 model.prob += model.pr_dn[(a, t)] <= ts.max_power - model.p[(a, t)], f"r_dn_bound_{a}_{t}"
             else:
                 # Use remaining margin above p[(a,t)] for pr_dn, and below for pr_up
-                poly = offer.polygons[t - model.offsets[a]]
-                points = poly.points
-                if len(points) < 4:
-                    ymax = points[1].y
-                    model.prob += model.pr_up[(a, t)] <= model.p[(a, t)], f"dfo_rup_bound_{a}_{t}"
-                    model.prob += model.pr_dn[(a, t)] <= ymax - model.p[(a, t)], f"dfo_rdn_bound_{a}_{t}"
+                poly   = offer.polygons[t - model.offsets[a]]
+                y_vals = [pt.y for pt in poly.points]
+                y_min, y_max = min(y_vals), max(y_vals)
+                # Up-reserve ≤ margin above baseline; down-reserve ≤ margin below max
+                model.prob += model.pr_up[(a, t)] <= model.p[(a, t)] - y_min, f"dfo_rup_bound_{a}_{t}"
+                model.prob += model.pr_dn[(a, t)] <= y_max - model.p[(a, t)], f"dfo_rdn_bound_{a}_{t}"
 
     def build_objective(self, model):
         dt = model.dt

@@ -54,22 +54,23 @@ def run_single_evaluation(flexoffers: List[Flexoffer], dfos: List[DFO],scenario:
         start_slot = day * slots_per_day
         end_slot = start_slot + slots_per_day
 
-        pool = flexoffers if config.TYPE == "FO" else dfos
-
-        active = []
+        active_dfos = []
         active_fos = []
+        active = []
 
-        for fo in pool:
-            offset = int((fo.get_est() - sim_start_ts) / config.TIME_RESOLUTION)
-            dur = fo.get_duration()
+        for dfo in dfos:
+            offset = int((dfo.get_est() - sim_start_ts) / config.TIME_RESOLUTION)
+            dur = dfo.get_duration()
             if offset < end_slot and (offset + dur) > start_slot:
-                active.append(fo)
+                active_dfos.append(dfo)
 
         for fo in flexoffers:
             offset = int((fo.get_est() - sim_start_ts) / config.TIME_RESOLUTION)
             dur = fo.get_duration()
             if offset < end_slot and (offset + dur) > start_slot:
                 active_fos.append(fo)
+
+        active = flexoffers if config.TYPE == "FO" else dfos
 
         # if len(active) < 2:
         #     continue
@@ -81,7 +82,7 @@ def run_single_evaluation(flexoffers: List[Flexoffer], dfos: List[DFO],scenario:
         for offer in agg_offers:
             print(offer)
 
-        optimizer = BaseOptimizer(active, spot, reserve, activation, indicators)
+        optimizer_opt = BaseOptimizer(active_dfos, spot, reserve, activation, indicators)
         optimizer_agg = BaseOptimizer(agg_offers, spot, reserve, activation, indicators)
 
         clustering_time = time.time() - t0
@@ -92,10 +93,10 @@ def run_single_evaluation(flexoffers: List[Flexoffer], dfos: List[DFO],scenario:
         runtimes_sch.append(scheduling_time)
 
         greedy_solution = greedy_baseline_schedule(active_fos, horizon_slots)
-        if compute_optimal:
-            optimal_solution = optimizer.run_theoretical_optimum()
-        else:
-            optimal_solution = greedy_solution = greedy_baseline_schedule(active_fos, horizon_slots)
+        # if compute_optimal:
+        optimal_solution = optimizer_opt.run_theoretical_optimum()
+        # else:
+        #     optimal_solution = greedy_solution = greedy_baseline_schedule(active_fos, horizon_slots)
 
         rev_sched = compute_profit(solution, spot, reserve, activation, indicators, penalty_series=activation['ImbalancePriceDKK'])
         rev_base = compute_profit(greedy_solution, spot, reserve, activation, indicators)
@@ -191,25 +192,25 @@ def evaluate_configurations():
 
 
 def get_scenarios():
-    types = ["FO", "DFO"]
-    modes = ["joint", "sequential_reserve_first"]
-    alignments = ["start"]
+    types = ["FO"]
+    modes = ["joint"]
+    alignments = ["balance_fast"]
     run_spot_options = [True]
-    run_reserve_options = [False, True]
-    run_activation_options = [False, True]
+    run_reserve_options = [False]
+    run_activation_options = [False]
     time_resolutions = [3600]
-    cluster_methods = ['ward']
+    cluster_methods = ['dbscan']
     dynamic = [False]
     parallel = [False]
     clusters = [5]
-    num_evs = [100, 1000, 10000]
+    num_evs = [1000]
 
     scenarios = []
     for type, mode, spot, reserve, activation, res, evs, cluster, align, cluster_method, dyn, par in product(
         types, modes, run_spot_options, run_reserve_options, run_activation_options, time_resolutions, num_evs, clusters, alignments, cluster_methods, dynamic, parallel
     ):
         # Skip invalid configs: activation can't be true if reserve is false
-        if (not spot) or (reserve != activation):
+        if (not spot) or (reserve != activation) or (mode == 'sequential_reserve_first' and reserve == False):
             continue
 
         #Each scenario will overwrite the config with these settings
