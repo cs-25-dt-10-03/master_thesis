@@ -18,10 +18,11 @@ from classes.electricVehicle import ElectricVehicle
 
 
 
-def compute_mean_runtimes(runtimes_sch, runtimes_agg):
+def compute_mean_runtimes(runtimes_sch, runtimes_agg, runtimes_cl):
     return {
         "runtime_scheduling": round(np.mean([runtimes_sch]), 3),
-        "runtime_aggregation": round(np.mean([runtimes_agg]), 3)
+        "runtime_aggregation": round(np.mean([runtimes_agg]), 3),
+        "runtime_clustering": round(np.mean([runtimes_cl]), 3)
     }
 
 def compute_financial_metrics(daily_results):
@@ -52,7 +53,7 @@ def compute_financial_metrics(daily_results):
     # --- 3) Net profits (revenues minus costs) ---
     total_rev   = np.mean([r["rev_sched"]["total_rev"] for r in daily_results])
     optimal_total = np.mean([r["rev_opt"]["total_rev"]   for r in daily_results])
-    
+
     # --- 4) % of theoretical maximum improvement captured (improvement ratio) ---
     # Compute net costs so that lower cost = better:
     #  scheduler_cost = spot_cost - (reserve_rev + activation_rev)
@@ -65,7 +66,7 @@ def compute_financial_metrics(daily_results):
     # The savings we actually achieved
     savings     = baseline_cost - scheduler_cost
     if max_savings <= 1e-9:
-        pct_of_optimal = None
+        pct_of_optimal = -1
     else:
         pct_of_optimal = 100.0 * savings / max_savings
         # clamp into [0,100]

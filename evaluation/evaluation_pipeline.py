@@ -46,7 +46,7 @@ def run_single_evaluation(flexoffers: List[Flexoffer], dfos: List[DFO],scenario:
 
     runtime_price_loading = perf_counter() - t0_price
 
-    runtimes_agg, runtimes_sch = [], []
+    runtimes_agg, runtimes_sch, runtimes_cl = [], [], []
     daily_results = []
 
     for day in range(config.SIMULATION_DAYS):
@@ -75,28 +75,25 @@ def run_single_evaluation(flexoffers: List[Flexoffer], dfos: List[DFO],scenario:
         # if len(active) < 2:
         #     continue
 
-        t0 = time.time()
-        agg_offers = cluster_and_aggregate_flexoffers(active, config.NUM_CLUSTERS)
-
-        print(f"offer length {len(agg_offers)}")
-        for offer in agg_offers:
-            print(offer)
+        agg_offers, clustering_time, aggregation_time = cluster_and_aggregate_flexoffers(active, config.NUM_CLUSTERS)
 
         optimizer_opt = BaseOptimizer(active_dfos, spot, reserve, activation, indicators)
         optimizer_agg = BaseOptimizer(agg_offers, spot, reserve, activation, indicators)
 
-        clustering_time = time.time() - t0
-        solution = optimizer_agg.run()
-        scheduling_time = time.time() - t0 - clustering_time
 
-        runtimes_agg.append(clustering_time)
+        t0 = time.time()
+        solution = optimizer_agg.run()
+        scheduling_time = time.time() - t0
+
+        runtimes_agg.append(aggregation_time)
+        runtimes_cl.append(clustering_time)
         runtimes_sch.append(scheduling_time)
 
         greedy_solution = greedy_baseline_schedule(active_fos, horizon_slots)
-        # if compute_optimal:
-        optimal_solution = optimizer_opt.run_theoretical_optimum()
-        # else:
-        #     optimal_solution = greedy_solution = greedy_baseline_schedule(active_fos, horizon_slots)
+        if compute_optimal:
+            optimal_solution = optimizer_opt.run_theoretical_optimum()
+        else:
+            optimal_solution = greedy_solution = greedy_baseline_schedule(active_fos, horizon_slots)
 
         rev_sched = compute_profit(solution, spot, reserve, activation, indicators, penalty_series=activation['ImbalancePriceDKK'])
         rev_base = compute_profit(greedy_solution, spot, reserve, activation, indicators)
@@ -118,7 +115,7 @@ def run_single_evaluation(flexoffers: List[Flexoffer], dfos: List[DFO],scenario:
             "rev_opt": rev_opt,
         })
     
-    runtimes = compute_mean_runtimes(runtimes_sch, runtimes_agg)
+    runtimes = compute_mean_runtimes(runtimes_sch, runtimes_agg, runtimes_cl)
     financials = compute_financial_metrics(daily_results)
 
     return {
@@ -192,18 +189,18 @@ def evaluate_configurations():
 
 
 def get_scenarios():
-    types = ["FO"]
-    modes = ["joint"]
+    types = ["FO", "DFO"]
+    modes = ["joint", "sequential_reserve_first"]
     alignments = ["balance_fast"]
     run_spot_options = [True]
-    run_reserve_options = [False]
-    run_activation_options = [False]
+    run_reserve_options = [False, True]
+    run_activation_options = [False, True]
     time_resolutions = [3600]
-    cluster_methods = ['dbscan']
+    cluster_methods = ['kmeans']
     dynamic = [False]
     parallel = [False]
     clusters = [5]
-    num_evs = [1000]
+    num_evs = [5000, 10000, 50000]
 
     scenarios = []
     for type, mode, spot, reserve, activation, res, evs, cluster, align, cluster_method, dyn, par in product(
