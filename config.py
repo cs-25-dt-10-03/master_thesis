@@ -45,8 +45,8 @@ class config:
     # Hyperparameters for each:
     CLUSTER_PARAMS = {
         'ward':   {'n_clusters': NUM_CLUSTERS},
-        'kmeans': {'n_clusters': NUM_CLUSTERS, 'random_state': 42, 'n_jobs': -1},
-        'gmm':    {'n_components': NUM_CLUSTERS, 'covariance_type': 'full', 'random_state': 42, 'n_jobs': -1},
+        'kmeans': {'n_clusters': NUM_CLUSTERS, 'random_state': 42},
+        'gmm':    {'n_components': NUM_CLUSTERS, 'covariance_type': 'full', 'random_state': 42},
         'dbscan': {'eps': 0.5, 'min_samples': 5}
     }
 
