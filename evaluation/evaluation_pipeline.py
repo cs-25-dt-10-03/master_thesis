@@ -175,6 +175,7 @@ def evaluate_configurations():
             "runtime_price_loading": r["runtime_price_loading"],
             "runtime_scheduling": r["runtime_scheduling"],
             "runtime_aggregation": r["runtime_aggregation"],
+            "runtime_clustering": r["runtime_clustering"],
             # percent savings/gains
             "pct_total_saved":  r["pct_total_saved"],
             "pct_saved_spot":   r["pct_saved_spot"],
@@ -195,7 +196,7 @@ def get_scenarios():
     run_spot_options = [True]
     run_reserve_options = [False, True]
     run_activation_options = [False, True]
-    time_resolutions = [3600]
+    time_resolutions = [900]
     cluster_methods = ['kmeans']
     dynamic = [False]
     parallel = [False]
