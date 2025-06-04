@@ -17,8 +17,8 @@ lst2 = dt_to_unix(now + timedelta(hours=6))
 et2  = dt_to_unix(now + timedelta(hours=9))
 
 # Define simple power profiles
-profile1 = [TimeSlice(0.0, 11.0) for _ in range((et1 - est1)//3600)]
-profile2 = [TimeSlice(0.0, 11.0) for _ in range((et2 - est2)//3600)]
+profile1 = [TimeSlice(0.0, 11.0) for _ in range((et1 - lst1)//3600)]
+profile2 = [TimeSlice(0.0, 11.0) for _ in range((et2 - lst2)//3600)]
 
 # Create FlexOffers
 fo1 = Flexoffer(
