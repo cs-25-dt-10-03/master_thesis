@@ -35,7 +35,9 @@ class ElectricVehicle:
         sampled_soc = beta.rvs(alpha, beta_param)
         return 0.2 + (self.soc_max - self.soc_min) * sampled_soc
 
-    def sample_day_profile(self, day_start):
+    def sample_day_profile(self, day_start, resolution_seconds=None):
+        if resolution_seconds is None:
+            resolution_seconds = config.TIME_RESOLUTION        
         """
         Samples whether EV is active today and if yes, generates arrival/departure/SoC.
         day_start: datetime at 00:00 of the day.
@@ -52,8 +54,8 @@ class ElectricVehicle:
         arrival = day_start + timedelta(hours=arrival_hour)
 
         # --- DEPARTURE between (arrival+1h) and 18:00 ---
-        earliest_dep = arrival_hour + 5
-        latest_dep   = 18
+        earliest_dep = arrival_hour + 3
+        latest_dep   = 22
         # if someone arrives at 17, earliest_dep=16, so departure_hour==16
         if earliest_dep >= latest_dep:
             departure_hour = latest_dep
@@ -65,7 +67,10 @@ class ElectricVehicle:
         arrival_soc = np.random.beta(2, 5) * 0.8  # between 0 and 0.4
         arrival_soc = np.clip(arrival_soc, 0.1, 0.3)
 
-        return arrival, departure, arrival_soc
+        arrival_rounded = round_datetime_to_resolution(arrival, resolution_seconds, "down")
+        departure_rounded = round_datetime_to_resolution(departure, resolution_seconds, "up")
+
+        return arrival_rounded, departure_rounded, arrival_soc
 
     def create_synthetic_flex_offer(self, arrival, departure, arrival_soc, target_soc=0.9, resolution_seconds=None):
         if resolution_seconds is None:
@@ -75,12 +80,8 @@ class ElectricVehicle:
         power = self.charging_power * self.charging_efficiency
         energy_per_slot = power * dt_hours
 
-        # Round arrival and departure
-        arrival_rounded = round_datetime_to_resolution(arrival, resolution_seconds, "down")
-        departure_rounded = round_datetime_to_resolution(departure, resolution_seconds, "up")
-
-        est = dt_to_unix(arrival_rounded)
-        et  = dt_to_unix(departure_rounded)
+        est = dt_to_unix(arrival)
+        et  = dt_to_unix(departure)
 
         # Total time available (slots)
         total_slots = int((et - est) // resolution_seconds)
@@ -118,28 +119,28 @@ class ElectricVehicle:
         )
 
 
-    def sample_start_times(self) -> Tuple[datetime, datetime]:
-        arrival_mu = np.log(18)
-        arrival_sigma = 0.1
+    # def sample_start_times(self) -> Tuple[datetime, datetime]:
+    #     arrival_mu = np.log(18)
+    #     arrival_sigma = 0.1
 
-        dep_mu = np.log(8)
-        dep_sigma = 0.1
+    #     dep_mu = np.log(8)
+    #     dep_sigma = 0.1
 
-        arrival_hour = int(lognorm.rvs(s=arrival_sigma, scale=np.exp(arrival_mu)))
-        if arrival_hour >= 24:
-            arrival_hour = 23
+    #     arrival_hour = int(lognorm.rvs(s=arrival_sigma, scale=np.exp(arrival_mu)))
+    #     if arrival_hour >= 24:
+    #         arrival_hour = 23
 
-        departure_hour = int(lognorm.rvs(s=dep_sigma, scale=np.exp(dep_mu)))
+    #     departure_hour = int(lognorm.rvs(s=dep_sigma, scale=np.exp(dep_mu)))
 
-        start_day = pd.to_datetime(config.SIMULATION_START_DATE)
+    #     start_day = pd.to_datetime(config.SIMULATION_START_DATE)
 
-        charging_window_start = start_day.replace(hour=arrival_hour, minute=0, second=0, microsecond=0)
-        charging_window_end = start_day.replace(hour=departure_hour, minute=0, second=0, microsecond=0)
+    #     charging_window_start = start_day.replace(hour=arrival_hour, minute=0, second=0, microsecond=0)
+    #     charging_window_end = start_day.replace(hour=departure_hour, minute=0, second=0, microsecond=0)
 
-        if departure_hour < arrival_hour:
-            charging_window_end += timedelta(days=1)
+    #     if departure_hour < arrival_hour:
+    #         charging_window_end += timedelta(days=1)
 
-            return charging_window_start, charging_window_end
+    #         return charging_window_start, charging_window_end
 
     def create_flexoffer(self, start, stop) -> Flexoffer:
         earliest_start = datetime(2020, 1, 1, 0, 0, 0) + timedelta(hours=start)
@@ -196,7 +197,7 @@ class ElectricVehicle:
 
         time_slot_resolution = timedelta(seconds=config.TIME_RESOLUTION)
 
-        num_slots = int(duration / time_slot_resolution) + 1
+        num_slots = int(duration // time_slot_resolution) #+ 1
 
         initial_energy = self.current_soc * self.capacity
         target_min_energy = self.soc_min * self.capacity

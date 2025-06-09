@@ -183,16 +183,30 @@ def load_and_prepare_prices(start_ts, horizon_slots, resolution):
     mfrr.set_index('HourDK', inplace=True)
     act.set_index('HourDK', inplace=True)
 
-    act["alpha_up"] = act["mFRRUpActBal"] / mfrr["mFRR_UpPurchased"]
-    act["alpha_dn"] = act["mFRRDownActBal"] / mfrr["mFRR_DownPurchased"]
+    # Compute α_up, α_dn safely: if purchased == 0, set α to 0
+    act["alpha_up"] = 0.0
+    act["alpha_dn"] = 0.0
+
+    # For rows where mFRR_UpPurchased > 0, divide; else leave α_up = 0
+    mask_up = mfrr["mFRR_UpPurchased"] > 0
+    act.loc[mask_up, "alpha_up"] = (act.loc[mask_up, "mFRRUpActBal"] / mfrr.loc[mask_up, "mFRR_UpPurchased"])
+
+    # For rows where mFRR_DownPurchased > 0, divide; else leave α_dn = 0
+    mask_dn = mfrr["mFRR_DownPurchased"] > 0
+    act.loc[mask_dn, "alpha_dn"] = (act.loc[mask_dn, "mFRRDownActBal"] / mfrr.loc[mask_dn, "mFRR_DownPurchased"])
 
     spot_prices = spot['SpotPriceDKK']
     reserve_prices = mfrr[['mFRR_UpPriceDKK', 'mFRR_DownPriceDKK', "mFRR_UpPurchased", "mFRR_DownPurchased"]]
     activation_prices = act[['BalancingPowerPriceUpDKK', 'BalancingPowerPriceDownDKK', "ImbalancePriceDKK", "alpha_up", "alpha_dn"]]
 
-    delta_up = (activation_prices['BalancingPowerPriceUpDKK'] > np.nanmean(activation_prices['BalancingPowerPriceUpDKK'])).astype(int)
-    delta_dn = (activation_prices['BalancingPowerPriceDownDKK'] > np.nanmean(activation_prices['BalancingPowerPriceDownDKK'])).astype(int)
-    indicators = list(zip(delta_up, delta_dn))
+    # delta_up = (activation_prices['BalancingPowerPriceUpDKK'] > np.nanmean(activation_prices['BalancingPowerPriceUpDKK'])).astype(int)
+    # delta_dn = (activation_prices['BalancingPowerPriceDownDKK'] > np.nanmean(activation_prices['BalancingPowerPriceDownDKK'])).astype(int)
+    # indicators = list(zip(delta_up, delta_dn))
+
+    indicators = list(zip(
+        activation_prices["alpha_up"].fillna(0.0),
+        activation_prices["alpha_dn"].fillna(0.0),
+    ))
 
     return spot_prices, reserve_prices, activation_prices, indicators
 

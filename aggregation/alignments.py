@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta
 from config import config
 from helpers import convert_hour_to_datetime
-import flexoffer_logic
 from flexoffer_logic import Flexoffer, TimeSlice, start_alignment_aggregate, balance_alignment_aggregate
 from typing import List
 #from classes.flexOffer import FlexOffer
