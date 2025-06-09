@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta
 import pandas as pd
 import time
+from config import config
+from typing import Dict, List, Tuple, Any
 
 def convert_hour_to_datetime(hour: int) -> datetime:
     return datetime.now().replace(hour=hour, minute=0, second=0, microsecond=0)
@@ -11,62 +13,6 @@ def dt_to_unix(dt):
 def dt_to_unix_seconds(dt_obj):
     return int(time.mktime(dt_obj.timetuple())) 
 
-
-def sol_to_df(sol):
-    """
-    Convert a solution dict into a pandas DataFrame.
-    Handles missing variables (e.g., if pr_up or pb_up aren't present).
-    """
-    all_vars = list(sol.keys())
-    records = []
-
-    for var in all_vars:
-        agent_dict = sol[var]
-        for agent, times in agent_dict.items():
-            for t, v in times.items():
-                records.append({
-                    'time_slot': t,
-                    'agent': agent,
-                    'var': var,
-                    'value': v
-                })
-
-    df = pd.DataFrame(records)
-
-    if df.empty:
-        return pd.DataFrame(columns=["time_slot", "agent"] + all_vars)
-
-    # Pivot: one row per (time, agent), one column per var
-    df = df.pivot_table(
-        index=["time_slot", "agent"],
-        columns="var",
-        values="value",
-        fill_value=0,
-        aggfunc="first"
-    ).reset_index()
-
-    return df
-
-def add_spot_prices_to_df(df, spot_series):
-    """
-    Add the corresponding spot price for each time slot.
-    Assumes time_slot is an integer index and spot_series is a pandas Series with integer index.
-    """
-    # If spot_series has a datetime index, convert to integer slot indices first
-    if isinstance(spot_series.index[0], pd.Timestamp):
-        spot_series = spot_series.reset_index(drop=False)
-        spot_series["time_slot"] = range(len(spot_series))
-        spot_df = spot_series[["time_slot", "SpotPriceDKK"]].rename(columns={"SpotPriceDKK": "spot_price"})
-    else:
-        spot_df = pd.DataFrame({
-            "time_slot": spot_series.index,
-            "spot_price": spot_series.values
-        })
-
-    df_with_price = df.merge(spot_df, on="time_slot", how="left")
-    return df_with_price
-
-
 def round_datetime_to_resolution(dt: datetime, resolution_seconds: int, direction: str = "down") -> datetime:
     seconds_since_hour = (dt - dt.replace(minute=0, second=0, microsecond=0)).total_seconds()
     if direction == "down":
@@ -76,3 +22,35 @@ def round_datetime_to_resolution(dt: datetime, resolution_seconds: int, directio
         return dt + timedelta(seconds=delta)
     else:
         raise ValueError("direction must be 'down' or 'up'")
+    
+def filter_day_offers(flexoffers: List[Any], dfos: List[Any],sim_start_ts: int, day: int, slots_per_day: int) -> Tuple[List[Any], List[Any], int, int]:
+    """
+    Returns (active_fos, active_dfos, start_slot, end_slot) for the given calendar day.
+    """
+    start_slot = day * slots_per_day
+    end_slot   = start_slot + slots_per_day
+
+    active_fos = [
+        fo for fo in flexoffers
+        if ((fo.get_est() - sim_start_ts) // config.TIME_RESOLUTION) < end_slot
+        and (((fo.get_est() - sim_start_ts) // config.TIME_RESOLUTION) + fo.get_duration()) > start_slot
+    ]
+    active_dfos = [
+        dfo for dfo in dfos
+        if ((dfo.get_est() - sim_start_ts) // config.TIME_RESOLUTION) < end_slot
+        and (((dfo.get_est() - sim_start_ts) // config.TIME_RESOLUTION) + dfo.get_duration()) > start_slot
+    ]
+
+    return active_fos, active_dfos, start_slot, end_slot
+
+
+def slice_prices(prices: Dict[str, Any], start_slot: int, end_slot: int):
+    """
+    Unpack and slice all market series for [start_slot:end_slot].
+    """
+    spot       = prices["spot"]      [start_slot:end_slot]
+    reserve    = prices["reserve"]   [start_slot:end_slot]
+    activation = prices["activation"][start_slot:end_slot]
+    indic      = prices["indicators"][start_slot:end_slot]
+    imbalance  = prices["imbalance"] [start_slot:end_slot]
+    return spot, reserve, activation, indic, imbalance

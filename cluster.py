@@ -46,6 +46,7 @@ def cluster_and_aggregate_offers(offers: list):
     # 5) aggregate
     agg_offers, t_agg = aggregate_clusters(clusters)
 
+    # Check that energy of FO == AFO (just a quick check to catch potential errors)
     if config.TYPE == "FO":
         total_individual = sum(fo.get_min_overall_alloc() for fo in offers)
         total_aggregated = sum(afo.get_min_overall_alloc() for afo in agg_offers)

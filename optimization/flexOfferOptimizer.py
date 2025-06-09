@@ -11,18 +11,21 @@ import pulp
 from config import config
 
 class BaseOptimizer:
-    def __init__(self, offers, spot_prices, reserve_prices, activation_prices, indicators):
+    def __init__(self, offers, spot_prices, reserve_prices, activation_prices, indicators, base_ts: float = None):
         self.offers = offers
         self.spot_prices = spot_prices
         self.reserve_prices = reserve_prices
         self.activation_prices = activation_prices
         self.indicators = indicators
 
+        if base_ts is None:
+            self.sim_start_ts = pd.to_datetime(config.SIMULATION_START_DATE).timestamp()
+        else:
+            self.sim_start_ts = base_ts
+
         self.T = len(spot_prices)
         self.dt = config.TIME_RESOLUTION / 3600.0
-       
-        self.sim_start_ts = int(pd.to_datetime(config.SIMULATION_START_DATE).timestamp())
-        self.offsets = [int((fo.get_est() - self.sim_start_ts) / config.TIME_RESOLUTION) for fo in offers]
+        self.offsets = [int((fo.get_est() - self.sim_start_ts) // config.TIME_RESOLUTION) for fo in offers]
 
         self.prob = pulp.LpProblem("MarketOptimization", pulp.LpMaximize)
         self.p = {}

@@ -7,21 +7,6 @@ from datetime import datetime, timedelta
 from flexoffer_logic import set_time_resolution
 from database.parser import fo_parser
 
-# ─────────────────────────────────────────────────────────────
-# Top‐level helper for multiprocessing (must be picklable on Windows)
-# def _sample_and_build_task(args):
-#     ev, day = args
-#     prof = ev.sample_day_profile(day)
-#     if prof is None:
-#         return None
-#     arrival, departure, soc = prof
-    
-#     set_time_resolution(config.TIME_RESOLUTION)
-#     fo  = ev.create_synthetic_flex_offer(arrival, departure, soc)
-#     dfo = ev.create_dfo(arrival, departure - arrival, 4)
-#     return fo, dfo
-# ─────────────────────────────────────────────────────────────
-
 def simulate_fleet(
     num_evs: int = config.NUM_EVS,
     start_date = config.SIMULATION_START_DATE,

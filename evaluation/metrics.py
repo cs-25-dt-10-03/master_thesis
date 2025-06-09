@@ -8,9 +8,6 @@ import numpy as np
 from config import config
 from flexoffer_logic import Flexoffer, TimeSlice, DFO
 
-from flexoffer_logic import TimeSlice, Flexoffer
-from datetime import datetime
-from config import config
 from helpers import dt_to_unix
 from pulp import LpProblem, LpVariable, lpSum, LpMaximize, value
 import pandas as pd
@@ -28,8 +25,13 @@ def compute_mean_runtimes(runtimes_sch, runtimes_agg, runtimes_cl):
 def compute_financial_metrics(daily_results):
     import numpy as np
 
-    # --- 1) Pull out mean revenues from your daily results ---
+    # --- 1) Pull out mean revenues from each market ---
+    for r in daily_results:
+        print(f"daily spot saved:  {r["rev_sched"]["spot_rev"]}")
+
+
     rev_sch_spot   = np.mean([r["rev_sched"]["spot_rev"] for r in daily_results])
+    print (f"mean spot saved {rev_sch_spot}")
     rev_sch_res    = np.mean([r["rev_sched"]["res_rev"]  for r in daily_results])
     rev_sch_act    = np.mean([r["rev_sched"]["act_rev"]  for r in daily_results])
 
@@ -39,68 +41,41 @@ def compute_financial_metrics(daily_results):
 
     rev_base_spot  = np.mean([r["rev_base"]["spot_rev"]  for r in daily_results])
 
-    # --- 2) Interpret as positive costs / revenues ---
-    baseline_cost        = rev_base_spot
+    # --- 2) Net profits (revenues minus costs) ---
+    rev_sch_total  = np.mean([r["rev_sched"]["total_rev"] for r in daily_results])
+    rev_optimal_total = np.mean([r["rev_opt"]["total_rev"]   for r in daily_results])
 
-    scheduler_spot_cost  = rev_sch_spot
-    scheduler_res_rev    =   rev_sch_res
-    scheduler_act_rev    =   rev_sch_act
-
-    optimal_spot_cost    = rev_opt_spot
-    optimal_res_rev      =   rev_opt_res
-    optimal_act_rev      =   rev_opt_act
-
-    # --- 3) Net profits (revenues minus costs) ---
-    total_rev   = np.mean([r["rev_sched"]["total_rev"] for r in daily_results])
-    optimal_total = np.mean([r["rev_opt"]["total_rev"]   for r in daily_results])
-
-    # --- 4) % of theoretical maximum improvement captured (improvement ratio) ---
-    # Compute net costs so that lower cost = better:
-    #  scheduler_cost = spot_cost - (reserve_rev + activation_rev)
-    #  optimal_cost   = optimal_spot_cost - (optimal_res_rev + optimal_act_rev)
-    scheduler_cost = scheduler_spot_cost - (scheduler_res_rev + scheduler_act_rev)
-    optimal_cost   = optimal_spot_cost   - (optimal_res_rev   + optimal_act_rev)
-
-    # The maximum possible savings = baseline_cost - optimal_cost
-    max_savings = baseline_cost - optimal_cost
-    # The savings we actually achieved
-    savings     = baseline_cost - scheduler_cost
-    if max_savings <= 1e-9:
-        pct_of_optimal = -1
+    # --- 3) % of theoretical maximum improvement captured (improvement ratio) ---
+    if rev_optimal_total > rev_sch_total:
+        pct_of_optimal = rev_optimal_total / rev_sch_total * 100
     else:
-        pct_of_optimal = 100.0 * savings / max_savings
-        # clamp into [0,100]
-        pct_of_optimal = max(0.0, min(100.0, pct_of_optimal))
-    # --- 5) Compute net scheduler cost & baseline savings ---
-    scheduler_cost  = scheduler_spot_cost - (scheduler_res_rev + scheduler_act_rev)
+        pct_of_optimal = rev_sch_total / rev_optimal_total * 100
+
+    # --- 4) Compute net scheduler cost & baseline savings ---
+    #total_savings = rev_base_spot - rev_sch_total
+    scheduler_cost  = rev_sch_spot - (rev_sch_res + rev_sch_act)
+    baseline_cost   = rev_base_spot
+
     total_savings   = baseline_cost - scheduler_cost
-
-    # savings vs baseline
-
-    print(f"[DEBUGGING] scheduler_cost: {scheduler_cost}, baseline_cost: {baseline_cost} , total_savings: {total_savings} ")
-
-    pct_total_saved = 100.0 * total_savings / baseline_cost
-    print(f"[DEBUGGING] {pct_total_saved} = 100.0 * {total_savings} / {baseline_cost} ")
+    pct_total_saved = abs(total_savings) / rev_base_spot * 100
 
 
-    # --- 6) Breakdown of contributions (sum ≈ 100%) ---
-    if abs(total_savings) < 1e-9:
-        pct_saved_spot = pct_gain_res = pct_gain_act = None
-    else:
-        saved_spot     = baseline_cost - scheduler_spot_cost
-        gain_res       = scheduler_res_rev
-        gain_act       = scheduler_act_rev
+    # --- 5) Breakdown of contributions (sum ≈ 100%) ---
+    saved_spot = rev_base_spot - rev_sch_spot
+    gain_res   = rev_sch_res
+    gain_act   = rev_sch_act
 
-        print(f"saved spot: {saved_spot} , gain_res: {gain_res} , gain_act: {gain_act}")
+    pct_saved_spot = 100.0 * saved_spot / total_savings
+    pct_gain_res   = 100.0 * gain_res   / total_savings
+    pct_gain_act   = 100.0 * gain_act   / total_savings
 
-        pct_saved_spot = 100.0 * saved_spot / total_savings
-        pct_gain_res   = 100.0 * gain_res   / total_savings
-        pct_gain_act   = 100.0 * gain_act   / total_savings
 
-        # sanity check
-        total_pct = pct_saved_spot + pct_gain_res + pct_gain_act
-        if abs(total_pct - 100.0) > 1e-6:
-            print(f"[WARNING] contributions sum to {total_pct:.4f}%")
+    print(f"saved spot: {saved_spot} , gain_res: {gain_res} , gain_act: {gain_act}")
+
+    # sanity check
+    total_pct = pct_saved_spot + pct_gain_res + pct_gain_act
+    if abs(total_pct - 100.0) > 1e-6:
+        print(f"[WARNING] contributions sum to {total_pct:.4f}%")
 
     return {
         "pct_of_optimal": round(pct_of_optimal, 2),
@@ -111,9 +86,9 @@ def compute_financial_metrics(daily_results):
 
     }
 
-def greedy_baseline_schedule(offers, horizon):
+def greedy_baseline_schedule(offers, horizon, base_ts: float = None):
     """
-    Greedy baseline: always use sim_start_ts to index into prices.
+    Greedy baseline: always use base_ts (or config.SIMULATION_START_DATE) to index prices.
     """
     sol = {k: {} for k in ("p","pr_up","pr_dn","pb_up","pb_dn","s_up","s_dn")}
     if not offers:
@@ -121,41 +96,37 @@ def greedy_baseline_schedule(offers, horizon):
 
     slot_sec = config.TIME_RESOLUTION     # seconds per slot
     dt       = slot_sec / 3600.0          # hours per slot
-    # rebase epoch so slot 0 is at the earliest of configured start or the first FO
-    config_start_ts = int(pd.to_datetime(config.SIMULATION_START_DATE).timestamp())
-    min_offer_ts    = min(fo.get_est() for fo in offers)
-    sim_start_ts    = min(config_start_ts, min_offer_ts)
+
+    # determine sim_start_ts
+    if base_ts is None:
+        config_start_ts = int(pd.to_datetime(config.SIMULATION_START_DATE).timestamp())
+    else:
+        config_start_ts = int(base_ts)
+
+    min_offer_ts = min(fo.get_est() for fo in offers)
+    sim_start_ts = min(config_start_ts, min_offer_ts)
     T = horizon
 
     for a, fo in enumerate(offers):
-        # total energy requirement (kWh)
-        required_energy = fo.get_min_overall_alloc()
-        prof            = fo.get_profile()
-        dur             = fo.get_duration()
-        start_ts        = fo.get_est()
-        slot_energy_limit = prof[0].max_power * dt
+        required = fo.get_min_overall_alloc()
+        prof     = fo.get_profile()
+        dur      = fo.get_duration()
+        start_ts = fo.get_est()
 
-        # map earliest_start to a 0-based slot index
-        base_idx = int((start_ts - sim_start_ts) / slot_sec)
+        base_idx = int((start_ts - sim_start_ts) // slot_sec)
+        remaining = required
+        slot_limit = prof[0].max_power * dt  # kWh per slot
 
-        remaining = required_energy
-        p_dict    = {}
-
-        # --- clamp every scheduled slot to [0, T)
-        # greedily fill slot by slot, respecting each slice’s max_power
+        p_dict = {}
         for i in range(dur):
             if remaining <= 0:
                 break
             idx = base_idx + i
             if idx < 0 or idx >= T:
-                print("vi breaker tids horizon i greedy")
                 break
-
-            # allocate kWh up to slot limit or what's left
-            energy_to_charge = min(slot_energy_limit, remaining)  # kWh
-            p_val = energy_to_charge / dt # kW
-            p_dict[idx] = p_val
-            remaining   -= energy_to_charge
+            to_charge = min(slot_limit, remaining)
+            p_dict[idx] = to_charge / dt
+            remaining -= to_charge
 
         sol["p"][a] = p_dict
         for key in ("pr_up","pr_dn","pb_up","pb_dn","s_up","s_dn"):

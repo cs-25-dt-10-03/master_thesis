@@ -14,41 +14,83 @@ class ActivationMarket:
             model.pb_dn[(a, t)] = pulp.LpVariable(f"pb_dn_{a}_{t}", lowBound=0)
             model.s_up[(a, t)]  = pulp.LpVariable(f"s_up_{a}_{t}",  lowBound=0)
             model.s_dn[(a, t)]  = pulp.LpVariable(f"s_dn_{a}_{t}",  lowBound=0)
-
+            
     def add_constraints(self, model):
         for (a, t) in model.pr_up:
-            d_up, d_dn = self.indicators[t]
+            # Pull activation fraction indicators
+            α_up, α_dn = self.indicators[t]
 
-            model.prob += model.pb_up[(a, t)] <= model.pr_up[(a, t)], f"act_pb_up_limit_{a}_{t}"
-            model.prob += model.pb_dn[(a, t)] <= model.pr_dn[(a, t)], f"act_pb_dn_limit_{a}_{t}"
+            # 1) Bid limits
+            model.prob += model.pb_up[(a, t)] <= model.pr_up[(a, t)], \
+                          f"act_pb_up_limit_{a}_{t}"
+            model.prob += model.pb_dn[(a, t)] <= model.pr_dn[(a, t)], \
+                          f"act_pb_dn_limit_{a}_{t}"
 
-            if d_up == 0:
-                model.prob += model.pb_up[(a, t)] == 0, f"act_pb_up_zero_if_off_{a}_{t}"
-            if d_dn == 0:
-                model.prob += model.pb_dn[(a, t)] == 0, f"act_pb_dn_zero_if_off_{a}_{t}"
+            # 2) Fractional up/down call caps
+            model.prob += model.pb_up[(a, t)] <= α_up * model.pr_up[(a, t)], \
+                          f"act_pb_up_fraction_{a}_{t}"
+            model.prob += model.pb_dn[(a, t)] <= α_dn * model.pr_dn[(a, t)], \
+                          f"act_pb_dn_fraction_{a}_{t}"
 
-            model.prob += model.pb_up[(a, t)] + model.s_up[(a, t)] >= model.pr_up[(a, t)] * d_up, f"act_up_slack_{a}_{t}"
-            model.prob += model.pb_dn[(a, t)] + model.s_dn[(a, t)] >= model.pr_dn[(a, t)] * d_dn, f"act_dn_slack_{a}_{t}"
+            # 3) Slack penalties if short‐called
+            model.prob += (model.pb_up[(a, t)] + model.s_up[(a, t)]
+                           >= α_up * model.pr_up[(a, t)]), f"act_up_slack_{a}_{t}"
+            model.prob += (model.pb_dn[(a, t)] + model.s_dn[(a, t)]
+                           >= α_dn * model.pr_dn[(a, t)]), f"act_dn_slack_{a}_{t}"
 
-            # — enforce actual power stays within [min,max] of the time slice —
-            #    p_act = p – pb_up + pb_dn
+            # 4) Enforce p_act = p – pb_up + pb_dn within min/max power
             offer = model.offers[a]
-            p_act = ( model.p[(a, t)]
-                    - model.pb_up[(a, t)]
-                    + model.pb_dn[(a, t)] )
+            p_act = model.p[(a, t)] - model.pb_up[(a, t)] + model.pb_dn[(a, t)]
 
             if isinstance(offer, Flexoffer):
                 ts = offer.get_profile()[t - model.offsets[a]]
-                model.prob += p_act >= ts.min_power, f"act_min_power_{a}_{t}"
-                model.prob += p_act <= ts.max_power, f"act_max_power_{a}_{t}"
+                model.prob += p_act >= ts.min_power, \
+                              f"act_min_power_{a}_{t}"
+                model.prob += p_act <= ts.max_power, \
+                              f"act_max_power_{a}_{t}"
             else:
-                # DFO: bound p_act within global polygon y-limits
                 poly   = offer.polygons[t - model.offsets[a]]
                 y_vals = [pt.y for pt in poly.points]
                 y_min, y_max = min(y_vals), max(y_vals)
-                model.prob += p_act >= y_min, f"dfo_act_min_{a}_{t}"
-                model.prob += p_act <= y_max, f"dfo_act_max_{a}_{t}"
-            # for DFOs you’d analogously bound p_act by the polygon’s y-values
+                model.prob += p_act >= y_min, \
+                              f"dfo_act_min_{a}_{t}"
+                model.prob += p_act <= y_max, \
+                              f"dfo_act_max_{a}_{t}"
+
+            # 5) (Optional) system‐level caps, if desired
+            # for t_index in sorted({tt for (_, tt) in model.pr_up}):
+            #     model.prob += (
+            #         pulp.lpSum(model.pb_up[(i, t_index)]
+            #                    for (i, tt) in model.pr_up
+            #                    if tt == t_index)
+            #         <= self.activation_prices["mFRRUpActBal"].iloc[t_index],
+            #         f"act_total_up_cap_{t_index}"
+            #     )
+            #     model.prob += (
+            #         pulp.lpSum(model.pb_dn[(i, t_index)]
+            #                    for (i, tt) in model.pr_dn
+            #                    if tt == t_index)
+            #         <= self.activation_prices["mFRRDownActBal"].iloc[t_index],
+            #         f"act_total_dn_cap_{t_index}"
+            #     )
+
+            # 6) Enforce total energy delivered ≥ min_overall_alloc
+            #    after all up/down dispatches
+            p_act_total = pulp.lpSum(
+                (model.p[(a, tt)]
+                   - model.pb_up[(a, tt)]
+                   + model.pb_dn[(a, tt)]) * model.dt
+                for tt in range(model.offsets[a],
+                                model.offsets[a] + offer.get_duration())
+                if (a, tt) in model.p
+            )
+
+            if isinstance(offer, Flexoffer):
+                model.prob += (
+                    p_act_total >= offer.get_min_overall_alloc(),
+                    f"post_activation_energy_{a}_{t}"
+                )
+
 
     def build_objective(self, model):
         dt = model.dt
