@@ -19,11 +19,8 @@ def simulate_fleet(
       - simulation_days: how many days to run
     Returns: (list_of_flexoffers, list_of_dfos)
     """
-    # 1) Normalize start_date
-    start_date = pd.to_datetime(start_date)
 
     if config.USE_SYNTHETIC:
-        # 2) Build the synthetic fleet
         fleet = [
             ElectricVehicle(
                 i,
@@ -37,7 +34,7 @@ def simulate_fleet(
         ]
 
         # 3) Prepare all (EV, day) tasks
-        days = pd.date_range(start=start_date, periods=simulation_days, freq='D')
+        days = pd.date_range(start=start_date, periods=simulation_days, freq=pd.DateOffset(days=1))
         fos = []
         dfos = []
 

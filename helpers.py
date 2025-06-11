@@ -27,7 +27,7 @@ def filter_day_offers(flexoffers: List[Any], dfos: List[Any],sim_start_ts: int, 
     """
     Returns (active_fos, active_dfos, start_slot, end_slot) for the given calendar day.
     """
-    start_slot = day * slots_per_day
+    start_slot = day * slots_per_day + 17 * 3600 // config.TIME_RESOLUTION
     end_slot   = start_slot + slots_per_day
 
     active_fos = [
@@ -48,9 +48,18 @@ def slice_prices(prices: Dict[str, Any], start_slot: int, end_slot: int):
     """
     Unpack and slice all market series for [start_slot:end_slot].
     """
-    spot       = prices["spot"]      [start_slot:end_slot]
-    reserve    = prices["reserve"]   [start_slot:end_slot]
-    activation = prices["activation"][start_slot:end_slot]
+    spot       = prices["spot"]      [start_slot:end_slot].reset_index(drop=True)
+    reserve    = prices["reserve"]   [start_slot:end_slot].reset_index(drop=True)
+    activation = prices["activation"][start_slot:end_slot].reset_index(drop=True)
     indic      = prices["indicators"][start_slot:end_slot]
-    imbalance  = prices["imbalance"] [start_slot:end_slot]
+    imbalance  = prices["imbalance"] [start_slot:end_slot].reset_index(drop=True)
+
+
+    expected = end_slot - start_slot
+    assert len(spot) == expected, (
+        f"[slice_prices] got {len(spot)} slots, expected {expected}"
+    )
+    print(f"[slice_prices] slots {start_slot}–{end_slot} ",
+          f"→ {spot.index[0]} … {spot.index[-1]}")
+
     return spot, reserve, activation, indic, imbalance

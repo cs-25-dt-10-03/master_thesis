@@ -135,24 +135,25 @@ def greedy_baseline_schedule(offers, horizon, base_ts: float = None):
     return sol
 
 
+# metrics.py (updated compute_profit)
+
 def compute_profit(sol, spot, reserve, activation, indicators, penalty_series=None):
     """
     Given the LP solution dict and price series, compute:
-      - spot_revenue, reserve_revenue, activation_revenue, penalty_cost
+      - spot_revenue, reserve_revenue, activation_net_revenue, penalty_cost
     """
 
     dt = config.TIME_RESOLUTION / 3600.0  # hours per slot
 
-
     spot_rev = 0.0
     res_rev  = 0.0
-    act_rev  = 0.0
+    act_rev  = 0.0  # now holds net activation margin
     pen_cost = 0.0
 
     for a, p_dict in sol["p"].items():
         for t, p_val in p_dict.items():
 
-            # spot revenue
+            # spot revenue on baseline dispatch
             spot_rev += p_val * spot.iloc[t] * dt
 
             # reserve revenue
@@ -162,13 +163,16 @@ def compute_profit(sol, spot, reserve, activation, indicators, penalty_series=No
                 r_up, r_dn, _, _ = reserve.iloc[t]
                 res_rev += (pr_up_val * r_up + pr_dn_val * r_dn) * dt
 
-            # activation revenue & penalty
+            # activation net margin & penalty
             if config.RUN_ACTIVATION and activation is not None:
                 pb_up_val = sol["pb_up"][a].get(t, 0.0) or 0.0
                 pb_dn_val = sol["pb_dn"][a].get(t, 0.0) or 0.0
-                b_up, b_dn, penalty, _, _ = activation.iloc[t]
-                act_rev += (pb_up_val * b_up + pb_dn_val * b_dn) * dt
+                b_up, b_dn, _, _, _ = activation.iloc[t]
 
+                # Compute net margin: balancing-energy price minus spot opportunity cost
+                act_rev += (pb_up_val * (b_up) + pb_dn_val * (b_dn)) * dt
+
+                # penalty for under-delivery
                 s_up_val = sol["s_up"][a].get(t, 0.0)
                 s_dn_val = sol["s_dn"][a].get(t, 0.0)
                 penalty = penalty_series.iloc[t] if penalty_series is not None else config.PENALTY
@@ -182,6 +186,7 @@ def compute_profit(sol, spot, reserve, activation, indicators, penalty_series=No
         "penalty":   pen_cost,
         "total_rev": total
     }
+
 
 
 

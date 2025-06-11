@@ -72,17 +72,17 @@ class BaseOptimizer:
 
         # ---------- PHASE 2: Re‐init model, re‐fix vars, then add all objectives ----------
         # Re‐initialize the optimizer to clear the old LP
-        self.__init__(self.offers,
-                      self.spot_prices,
-                      self.reserve_prices,
-                      self.activation_prices,
-                      self.indicators)
-
+        day_base_ts = self.sim_start_ts
+        self.__init__(self.offers, self.spot_prices, self.reserve_prices, self.activation_prices, self.indicators, base_ts=day_base_ts)
+        
         # 4. Re-create variables and immediately fix them to Phase 1 values
         #    Baseline p
         spot_mod = SpotMarket(self.spot_prices)
         spot_mod.create_variables(self)
+        spot_mod.add_constraints(self)    # ← re-add spot constraints
         for (a, t), val in fixed_p.items():
+            if (a, t) not in self.p:
+                continue
             var = self.p[(a, t)]
             var.lowBound = val
             var.upBound  = val
@@ -91,10 +91,14 @@ class BaseOptimizer:
         res_mod = ReserveMarket(self.reserve_prices)
         res_mod.create_variables(self)
         for (a, t), val in fixed_pr_up.items():
+            if (a, t) not in self.pr_up:
+                continue
             var = self.pr_up[(a, t)]
             var.lowBound = val
             var.upBound  = val
         for (a, t), val in fixed_pr_dn.items():
+            if (a, t) not in self.pr_dn:
+                continue
             var = self.pr_dn[(a, t)]
             var.lowBound = val
             var.upBound  = val

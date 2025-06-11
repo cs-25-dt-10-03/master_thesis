@@ -24,7 +24,8 @@ os.makedirs(RESULTS_DIR, exist_ok=True)
 
 # 1) run_day_optimizations
 def run_day_optimizations(
-    day_offers:      List[Any],
+    flexoffers_day:  List[Flexoffer],
+    dfos_day:        List[DFO],
     prices:          Dict[str, Any],
     start_slot:      int,
     end_slot:        int,
@@ -42,9 +43,15 @@ def run_day_optimizations(
     # 1) slice prices for this 24h block
     spot_day, reserve_day, activation_day, indic_day, imb_day = slice_prices(prices, start_slot, end_slot)
 
-    # 2) cluster & aggregate
-    agg_offers, t_clust, t_agg = cluster_and_aggregate_offers(day_offers)
+    print(f"start_slot={start_slot}, end_slot={end_slot}, ",
+        f"spot spans {spot_day.index[0]} → {spot_day.index[-1]}")
 
+    # 2) cluster & aggregate
+    if config.TYPE == "FO":
+        agg_offers, t_clust, t_agg = cluster_and_aggregate_offers(flexoffers_day)
+    else:
+        agg_offers, t_clust, t_agg = cluster_and_aggregate_offers(dfos_day)
+ 
     # 3) aggregator solve (with Day-0 = base_ts)
     t0 = perf_counter()
     sol_agg = BaseOptimizer(agg_offers, spot_day, reserve_day ,activation_day, indic_day, base_ts=base_ts).run()
@@ -53,15 +60,15 @@ def run_day_optimizations(
     rev_sched = compute_profit(sol_agg,spot_day,reserve_day,activation_day,indic_day,penalty_series=imb_day)
 
     # 4) greedy baseline
-    sol_gr = greedy_baseline_schedule(day_offers, slots_per_day, base_ts=base_ts)
+    sol_gr = greedy_baseline_schedule(flexoffers_day, slots_per_day, base_ts=base_ts)
     rev_base = compute_profit(sol_gr, spot_day, reserve_day, activation_day, indic_day)
 
     # 5) theoretical optimum
     if compute_optimal:
-        sol_opt = BaseOptimizer( day_offers, spot_day, reserve_day, activation_day, indic_day, base_ts=base_ts).run_theoretical_optimum()
+        # always run “optimal” on the raw DFOs
+        sol_opt = BaseOptimizer(dfos_day, spot_day, reserve_day, activation_day, indic_day, base_ts=base_ts).run_theoretical_optimum()
     else:
         sol_opt = sol_gr
-
     rev_opt = compute_profit( sol_opt, spot_day, reserve_day, activation_day, indic_day, penalty_series=imb_day)
 
     return {
@@ -74,22 +81,21 @@ def run_day_optimizations(
     }
 
 # 2) run_monthly_dayahead
-def run_monthly_dayahead(flexoffers: List[Any], dfos: List[Any], prices: Dict[str, Any], sim_start_ts: float) -> List[Dict[str, Any]]:
+def run_monthly(flexoffers: List[Any], dfos: List[Any], prices: Dict[str, Any], sim_start_ts: float) -> List[Dict[str, Any]]:
     """
     Loop over calendar days, filter offers, and delegate to run_day_optimizations.
     """
     slots_per_day   = int(24 * (3600 / config.TIME_RESOLUTION))
-    compute_optimal = config.NUM_EVS <= 1001
+    compute_optimal = config.NUM_EVS <= 1001 # we only compute optimal if we have 1000 or less evs
 
     daily_results: List[Dict[str, Any]] = []
     for day in range(config.SIMULATION_DAYS):
-        fos_day, dfos_day, start_slot, end_slot = filter_day_offers(
-            flexoffers, dfos, sim_start_ts, day, slots_per_day
-        )
-        day_offers = fos_day if config.TYPE == "FO" else dfos_day
+    
+        fos_day, dfos_day, start_slot, end_slot = filter_day_offers(flexoffers, dfos, sim_start_ts, day, slots_per_day)
 
         dr = run_day_optimizations(
-            day_offers,
+            fos_day,
+            dfos_day,
             prices,
             start_slot,
             end_slot,
@@ -114,8 +120,10 @@ def run_evaluation(
     # 1) setup
     start_date   = pd.to_datetime(config.SIMULATION_START_DATE)
     sim_start_ts = float(start_date.timestamp())
-    slots_per_day= int(24 * (3600 / config.TIME_RESOLUTION))
-    horizon_slots= config.SIMULATION_DAYS * slots_per_day
+    
+    slots_per_day = int(24 * (3600 / config.TIME_RESOLUTION))
+    horizon_slots = (config.SIMULATION_DAYS + 1) * slots_per_day
+
     compute_optimal = config.NUM_EVS <= 1001
 
     # 2) load *all* markets
@@ -132,18 +140,18 @@ def run_evaluation(
         "reserve":    reserve,
         "activation": activation,
         "indicators": indicators,
-        "imbalance":  activation["ImbalancePriceDKK"].to_numpy()
+        "imbalance":  activation["ImbalancePriceDKK"]
     }
 
-    # 3) rolling day‐ahead loop
-    daily_results = run_monthly_dayahead(
+    # 3) rolling day‐ahead loop for a month
+    daily_results = run_monthly(
         flexoffers,
         dfos,
         prices,
         sim_start_ts
     )
 
-    # 4) collect runtimes
+    # 4) collect mean runtimes for daily results
     runtimes_sch = [r["scheduling_time"]  for r in daily_results]
     runtimes_agg = [r["aggregation_time"] for r in daily_results]
     runtimes_cl  = [r["clustering_time"]  for r in daily_results]
@@ -222,8 +230,8 @@ def get_scenarios():
     modes = ["joint"]
     alignments = ["start"]
     run_spot_options = [True]
-    run_reserve_options = [False]
-    run_activation_options = [False]
+    run_reserve_options = [True]
+    run_activation_options = [True]
     time_resolutions = [3600]
     cluster_methods = ['ward']
     dynamic = [False]

@@ -9,9 +9,10 @@ CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
 class config:
     #SIMULATION
     NUM_EVS = 20
-    NUM_CLUSTERS = 10
+    NUM_CLUSTERS = 20
     SIMULATION_DAYS = 10
-    SIMULATION_START_DATE = "2024-01-16"
+    SIMULATION_START_DATE = "2024-01-16 12:00:00"
+
     USE_SYNTHETIC = True
     TYPE = 'FO'
 
@@ -40,7 +41,7 @@ class config:
     CLUSTER_THRESHOLD_SET    = 'time_range'
 
     CLUSTER_THRESHOLDS = {
-        'time_range': [7200, 7200],
+        'time_range': [3600, 3600],
         'energy':     [50.0],
     }
 

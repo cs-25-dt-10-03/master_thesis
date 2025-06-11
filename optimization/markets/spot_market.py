@@ -11,7 +11,7 @@ class SpotMarket:
             dur = offer.get_duration()
             for j in range(dur):
                 t = model.offsets[a] + j
-                if t >= model.T:
+                if t < 0 or t >= model.T:
                     continue
 
                 if isinstance(offer, Flexoffer):
