@@ -10,8 +10,8 @@ class config:
     #SIMULATION
     NUM_EVS = 20
     NUM_CLUSTERS = 20
-    SIMULATION_DAYS = 10
-    SIMULATION_START_DATE = "2024-01-16 12:00:00"
+    SIMULATION_DAYS = 1
+    SIMULATION_START_DATE = "2024-01-01 12:00:00"
 
     USE_SYNTHETIC = True
     TYPE = 'FO'
@@ -35,7 +35,7 @@ class config:
     CLUSTER_LINKAGE = 'complete'
     USE_THRESHOLD = True
 
-    MIN_CLUSTER_ENERGY = None
+    MIN_CLUSTER_ENERGY = 1000
     MAX_CLUSTER_ENERGY = None
 
     CLUSTER_THRESHOLD_SET    = 'time_range'

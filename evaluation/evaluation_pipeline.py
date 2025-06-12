@@ -16,7 +16,7 @@ from database.dataManager import load_and_prepare_prices
 from evaluation.utils.plot_flexOffer import plot_flexoffer, plot_flexoffer_aggregation
 from evaluation.metrics import greedy_baseline_schedule, compute_profit, compute_financial_metrics, compute_mean_runtimes
 from itertools import product
-from helpers import slice_prices, filter_day_offers
+from helpers import slice_prices, filter_day_offers, print_flexoffer_energy
 from flexoffer_logic import Flexoffer, DFO, TimeSlice, set_time_resolution
 
 RESULTS_DIR = "evaluation/results"
@@ -43,9 +43,6 @@ def run_day_optimizations(
     # 1) slice prices for this 24h block
     spot_day, reserve_day, activation_day, indic_day, imb_day = slice_prices(prices, start_slot, end_slot)
 
-    print(f"start_slot={start_slot}, end_slot={end_slot}, ",
-        f"spot spans {spot_day.index[0]} → {spot_day.index[-1]}")
-
     # 2) cluster & aggregate
     if config.TYPE == "FO":
         agg_offers, t_clust, t_agg = cluster_and_aggregate_offers(flexoffers_day)
@@ -62,6 +59,10 @@ def run_day_optimizations(
     # 4) greedy baseline
     sol_gr = greedy_baseline_schedule(flexoffers_day, slots_per_day, base_ts=base_ts)
     rev_base = compute_profit(sol_gr, spot_day, reserve_day, activation_day, indic_day)
+
+    print_flexoffer_energy(agg_offers)
+    for offer in agg_offers:
+        plot_flexoffer(offer)
 
     # 5) theoretical optimum
     if compute_optimal:
@@ -89,6 +90,7 @@ def run_monthly(flexoffers: List[Any], dfos: List[Any], prices: Dict[str, Any], 
     compute_optimal = config.NUM_EVS <= 1001 # we only compute optimal if we have 1000 or less evs
 
     daily_results: List[Dict[str, Any]] = []
+
     for day in range(config.SIMULATION_DAYS):
     
         fos_day, dfos_day, start_slot, end_slot = filter_day_offers(flexoffers, dfos, sim_start_ts, day, slots_per_day)
@@ -168,6 +170,7 @@ def run_evaluation(
     }
 
 
+
 def evaluate_configurations():
 
     out_dir = 'evaluation/results'
@@ -237,7 +240,7 @@ def get_scenarios():
     dynamic = [False]
     parallel = [False]
     clusters =  [15]
-    num_evs = [15000]
+    num_evs = [1500]
 
     scenarios = []
     for type, mode, spot, reserve, activation, res, evs, cluster, align, cluster_method, dyn, par in product(

@@ -25,16 +25,25 @@ class BaseOptimizer:
 
         self.T = len(spot_prices)
         self.dt = config.TIME_RESOLUTION / 3600.0
+
         self.offsets = [int((fo.get_est() - self.sim_start_ts) // config.TIME_RESOLUTION) for fo in offers]
 
         self.prob = pulp.LpProblem("MarketOptimization", pulp.LpMaximize)
+
+        #scheduled variables have the form of p[a,t], pr_up[a,t]
+        #where a = offer, and t = timestep
+        
+        #stage 1 
         self.p = {}
         self.pr_up = {}
         self.pr_dn = {}
+
+        #stage 2
         self.pb_up = {}
         self.pb_dn = {}
         self.s_up = {}
         self.s_dn = {}
+
         self.objective_terms = []
 
     def build_modules(self):
@@ -51,6 +60,14 @@ class BaseOptimizer:
         for m in modules: m.build_objective(self)
         return self.solve()
     
+
+
+
+
+
+
+
+
     def run_sequential_reserve_first(self):
         # ---------- PHASE 1: Spot feasibility + Reserve only ----------
         # 1. Create and constrain baseline p variables

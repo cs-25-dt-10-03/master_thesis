@@ -6,6 +6,8 @@ class SpotMarket:
     def __init__(self, spot_prices):
         self.spot_prices = spot_prices
 
+
+
     def create_variables(self, model):
         for a, offer in enumerate(model.offers):
             dur = offer.get_duration()
@@ -20,6 +22,7 @@ class SpotMarket:
                 else:
                     var = pulp.LpVariable(f"p_{a}_{t}", lowBound=0)
                 model.p[(a, t)] = var
+
 
     def add_constraints(self, model):
         for a, offer in enumerate(model.offers):
@@ -48,9 +51,8 @@ class SpotMarket:
                 model.prob += pulp.lpSum(energies) >= offer.min_total_energy, f"dfo_total_min_{a}"
                 model.prob += pulp.lpSum(energies) <= offer.max_total_energy, f"dfo_total_max_{a}"
 
+
+
     def build_objective(self, model):
         dt = model.dt
-        model.objective_terms.extend(
-            -self.spot_prices.iloc[t] * model.p[(a, t)] * dt
-            for (a, t) in model.p
-        )
+        model.objective_terms.extend(-self.spot_prices.iloc[t] * model.p[(a, t)] * dt for (a, t) in model.p)

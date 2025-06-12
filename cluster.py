@@ -9,6 +9,7 @@ from clustering.dynamic_clustering import dynamic_k_search
 from clustering.capacitated import enforce_cluster_energy_bounds
 from aggregation.aggregation import aggregate_clusters  # your original aggregation.py
 
+
 def cluster_and_aggregate_offers(offers: list):
     """
     1) Extract & scale features

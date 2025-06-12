@@ -14,7 +14,6 @@ import pandas as pd
 from classes.electricVehicle import ElectricVehicle
 
 
-
 def compute_mean_runtimes(runtimes_sch, runtimes_agg, runtimes_cl):
     return {
         "runtime_scheduling": round(np.mean([runtimes_sch]), 3),
@@ -23,15 +22,14 @@ def compute_mean_runtimes(runtimes_sch, runtimes_agg, runtimes_cl):
     }
 
 def compute_financial_metrics(daily_results):
-    import numpy as np
 
     # --- 1) Pull out mean revenues from each market ---
-    for r in daily_results:
-        print(f"daily spot saved:  {r["rev_sched"]["spot_rev"]}")
+    # for r in daily_results:
+    #     print(f"daily spot saved:  {r["rev_sched"]["spot_rev"]}")
 
 
     rev_sch_spot   = np.mean([r["rev_sched"]["spot_rev"] for r in daily_results])
-    print (f"mean spot saved {rev_sch_spot}")
+    print (f"mean spot cost {rev_sch_spot}")
     rev_sch_res    = np.mean([r["rev_sched"]["res_rev"]  for r in daily_results])
     rev_sch_act    = np.mean([r["rev_sched"]["act_rev"]  for r in daily_results])
 
@@ -70,7 +68,7 @@ def compute_financial_metrics(daily_results):
     pct_gain_act   = 100.0 * gain_act   / total_savings
 
 
-    print(f"saved spot: {saved_spot} , gain_res: {gain_res} , gain_act: {gain_act}")
+    # print(f"saved spot: {saved_spot} , gain_res: {gain_res} , gain_act: {gain_act}")
 
     # sanity check
     total_pct = pct_saved_spot + pct_gain_res + pct_gain_act
@@ -133,9 +131,6 @@ def greedy_baseline_schedule(offers, horizon, base_ts: float = None):
             sol[key][a] = {}
 
     return sol
-
-
-# metrics.py (updated compute_profit)
 
 def compute_profit(sol, spot, reserve, activation, indicators, penalty_series=None):
     """

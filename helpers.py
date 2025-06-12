@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 import pandas as pd
 import time
+from flexoffer_logic import Flexoffer, DFO
 from config import config
 from typing import Dict, List, Tuple, Any
 
@@ -23,23 +24,26 @@ def round_datetime_to_resolution(dt: datetime, resolution_seconds: int, directio
     else:
         raise ValueError("direction must be 'down' or 'up'")
     
-def filter_day_offers(flexoffers: List[Any], dfos: List[Any],sim_start_ts: int, day: int, slots_per_day: int) -> Tuple[List[Any], List[Any], int, int]:
+def filter_day_offers(flexoffers, dfos, sim_start_ts: int, day: int, slots_per_day: int):
     """
-    Returns (active_fos, active_dfos, start_slot, end_slot) for the given calendar day.
+    Returns (active_fos, active_dfos, start_slot, end_slot) for the given calendar day,
+    correctly including any FO that overlaps the day—even if it crosses midnight.
     """
-    start_slot = day * slots_per_day + 17 * 3600 // config.TIME_RESOLUTION
+    # 1) compute the slot indices of this day’s start/end (relative to sim_start_ts)
+    start_slot = day * slots_per_day
     end_slot   = start_slot + slots_per_day
 
-    active_fos = [
-        fo for fo in flexoffers
-        if ((fo.get_est() - sim_start_ts) // config.TIME_RESOLUTION) < end_slot
-        and (((fo.get_est() - sim_start_ts) // config.TIME_RESOLUTION) + fo.get_duration()) > start_slot
-    ]
-    active_dfos = [
-        dfo for dfo in dfos
-        if ((dfo.get_est() - sim_start_ts) // config.TIME_RESOLUTION) < end_slot
-        and (((dfo.get_est() - sim_start_ts) // config.TIME_RESOLUTION) + dfo.get_duration()) > start_slot
-    ]
+    # 2) turn those into absolute timestamps
+    day_start_ts = sim_start_ts + start_slot * config.TIME_RESOLUTION
+    day_end_ts   = sim_start_ts + end_slot   * config.TIME_RESOLUTION
+
+    def overlaps(fo):
+        # FO window is [fo.get_est(), fo.get_et()]
+        return (fo.get_est() <  day_end_ts) \
+           and (fo.get_et()  >  day_start_ts)
+
+    active_fos  = [fo for fo in flexoffers if overlaps(fo)]
+    active_dfos = [dfo for dfo in dfos      if overlaps(dfo)]
 
     return active_fos, active_dfos, start_slot, end_slot
 
@@ -63,3 +67,27 @@ def slice_prices(prices: Dict[str, Any], start_slot: int, end_slot: int):
           f"→ {spot.index[0]} … {spot.index[-1]}")
 
     return spot, reserve, activation, indic, imbalance
+
+
+def format_ts(ts: int) -> str:
+    return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+
+    
+
+
+def print_flexoffer_energy(offers: list[Any]) -> None:
+
+    if isinstance(offers[0], Flexoffer):
+        for i, fo in enumerate(offers):
+
+            print(f"--- AFO {i} ---")
+            print(f"Min Overall Alloc: {fo.get_min_overall_alloc():.2f} kWh")
+            # print(f"Earliest Start    (est): {format_ts(fo.get_est())}")
+            # print(f"Latest Start      (lst): {format_ts(fo.get_lst())}")
+            # print(f"End Time          (et):  {format_ts(fo.get_et())}")
+    
+    elif isinstance(offers[0], DFO):
+        for i, fo in enumerate(offers):
+
+            print(f"--- AFO {i} ---")
+            print(f"Min Overall Alloc: {fo.get_min_total_energy():.2f} kWh")

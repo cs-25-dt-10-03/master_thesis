@@ -56,10 +56,10 @@ class ElectricVehicle:
             return None
 
         # Log-normal parameters tuned from reference [1]
-        arrival_mu    = np.log(19)        # mean ~19:00
-        arrival_sigma = 0.3               # dispersion
-        depart_mu     = np.log(8 + 24)    # mean ~32h (i.e. 08:00 next day)
-        depart_sigma  = 0.3               # dispersion
+        arrival_mu    = np.log(18.25)  # mean ~18:15
+        arrival_sigma = 0.22           # narrower spread for sharp arrival peak
+        depart_mu     = np.log(31.0)   # mean ~07:00 next day
+        depart_sigma  = 0.18           # tighter spread for departure
 
         # Sample arrival between 17:00 and 22:00 on calendar_day
         while True:
@@ -81,12 +81,10 @@ class ElectricVehicle:
                     departure = next_midnight + datetime.timedelta(hours=depart_hour)
                     break
 
-        last_slot_time = calendar_day + datetime.timedelta(days=1) - datetime.timedelta(seconds=resolution_seconds)
-        departure_clamped = min(departure, last_slot_time)
         
         # Round to time resolution
         arrival_rounded   = round_datetime_to_resolution(arrival,            resolution_seconds, "down")
-        departure_rounded = round_datetime_to_resolution(departure_clamped, resolution_seconds, "down")
+        departure_rounded = round_datetime_to_resolution(departure, resolution_seconds, "down")
         # Sample state of charge at plug-in uniformly [17%, 43%]
         arrival_soc = np.random.uniform(0.17, 0.43)
 

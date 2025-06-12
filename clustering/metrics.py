@@ -17,6 +17,16 @@ def evaluate_clustering(offers: list, labels: np.ndarray):
 
     return {"Silhouette Score": sil, "Davies-Bouldin Index": db}
 
+
+
+
+
+
+
+
+
+
+
 def compute_flex_loss_score(offers: list, labels: np.ndarray):
     groups = defaultdict(list)
     for i, lbl in enumerate(labels):
