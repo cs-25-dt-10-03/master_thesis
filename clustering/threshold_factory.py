@@ -3,8 +3,8 @@ from config import config
 from flexoffer_logic import Flexoffer, DFO
 
 def extract_time_range(offer):
-    # [EST, LST]
-    return np.array([offer.get_est(), offer.get_lst()])
+    # [EST, LST, ET]
+    return np.array([offer.get_est(), offer.get_lst, offer.get_et()])
 
 def extract_energy(offer):
     if config.TYPE == "DFO":

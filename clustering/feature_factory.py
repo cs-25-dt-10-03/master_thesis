@@ -13,14 +13,13 @@ def extract_energy_profile(offer):
         return np.array([offer.get_min_overall_alloc(), offer.get_max_overall_alloc()]) 
 
 def extract_full(offer):
-    if config.TYPE == "FO":
-        return np.array([
-            offer.get_est(),
-            offer.get_lst(),
-            offer.get_duration(),
-            offer.get_et(),
-        ])
-    
+    return np.array([
+        offer.get_est(),
+        offer.get_lst(),
+        offer.get_duration(),
+        offer.get_et(),
+    ])
+
 # 2) Build a dict to map config keys → functions 
 FEATURE_EXTRACTORS = {
     'time_range':    extract_time_range,

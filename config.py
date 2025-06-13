@@ -38,15 +38,14 @@ class config:
     MIN_CLUSTER_ENERGY = 1000
     MAX_CLUSTER_ENERGY = None
 
-    CLUSTER_THRESHOLD_SET    = 'time_range'
-
+    CLUSTER_THRESHOLD_SET = 'time_range'
     CLUSTER_THRESHOLDS = {
-        'time_range': [3600, 3600],
+        'time_range': [7200, 7200, 7200],
         'energy':     [50.0],
     }
 
 
-    ALIGNMENT = "start"
+    ALIGNMENT = "balance_fast"
     CLUSTER_METHOD = 'ward'
     CLUSTER_PARAMS = {
         'ward':   {'n_clusters': NUM_CLUSTERS},

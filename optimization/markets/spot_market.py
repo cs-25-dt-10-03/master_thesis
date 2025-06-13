@@ -40,6 +40,7 @@ class SpotMarket:
                     t = model.offsets[a] + j
                     if (a, t) not in model.p:
                         continue
+                    
                     y_vals = [pt.y for pt in poly.points]
                     y_min, y_max = min(y_vals), max(y_vals)
                     model.prob += model.p[(a, t)] >= y_min, f"dfo_min_{a}_{t}"
@@ -47,7 +48,6 @@ class SpotMarket:
 
                     energies.append(model.p[(a, t)] * model.dt)
 
-                # now *correctly* enforce overall energy
                 model.prob += pulp.lpSum(energies) >= offer.min_total_energy, f"dfo_total_min_{a}"
                 model.prob += pulp.lpSum(energies) <= offer.max_total_energy, f"dfo_total_max_{a}"
 

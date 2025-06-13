@@ -22,9 +22,6 @@ def dynamic_k_search(X: np.ndarray, offers: list, max_k: int = None):
         if config.CLUSTER_SELECTION_METRIC == 'silhouette':
             score = evaluate_clustering(offers, labels)["Silhouette Score"] or -inf
             improve = (score > best_score)
-        else:
-            score = compute_flex_loss_score(offers, labels)
-            improve = (score < best_score)
 
         if improve or k == k_min:
             best_score, best_k = score, k

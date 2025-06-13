@@ -1,6 +1,7 @@
 import time
 from flexoffer_logic import Flexoffer, DFO, aggnto1, balance_alignment_aggregate, balance_alignment_tree_merge, get_time_resolution
 from config import config
+from aggregation.alignments import start_alignment_fast
 
 
 def aggregate_cluster(cluster):
@@ -17,8 +18,6 @@ def aggregate_cluster(cluster):
         elif mode == 'balance_fast':
             return balance_alignment_tree_merge(flexoffers, config.CLUSTER_PARAMS.get('balance_candidates', 5))
         else:
-            # Assume start alignment
-            from aggregation.alignments import start_alignment_fast
             return start_alignment_fast(flexoffers)
 
     if dfos and config.TYPE == 'DFO':

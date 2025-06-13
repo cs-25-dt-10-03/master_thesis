@@ -21,16 +21,17 @@ def threshold_group_offers(offers):
         labels:   np.ndarray of shape (N,) with cluster IDs
     """
     # 1) Build feature matrix for the chosen threshold set
-    X = np.array([[fo.get_est(), fo.get_lst()] for fo in offers], dtype=float)
+    X = np.array([[fo.get_est(), fo.get_lst(), fo.get_et()] for fo in offers], dtype=float)
 
     # 2) Load per-dimension thresholds from config
     thresholds = config.CLUSTER_THRESHOLDS[config.CLUSTER_THRESHOLD_SET]
 
     # 4) split into cells
     cells = defaultdict(list)
+
+    # (3,2)
     for i, x in enumerate(X):
-        # key j = floor(x_j / threshold_j)
-        key = tuple(int(math.floor(x[j] / thresholds[j])) for j in range(X.shape[1]))
+        key  = tuple(int(math.floor(x[j] / thresholds[j])) for j in range(X.shape[1]))
         cells[key].append(i)
 
     # build clusters and labels
